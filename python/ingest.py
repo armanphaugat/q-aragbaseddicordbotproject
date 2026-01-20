@@ -6,7 +6,6 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from bs4 import SoupStrainer
 import PyPDF2
 
-DB_PATH = "vectorstore/faiss_zomato"
 URL = "https://www.zomato.com/policies/terms-of-service"
 TAGS = ["h1", "h2", "h3", "p", "li"]
 
@@ -34,9 +33,10 @@ def split_documents(docs):
 def create_embeddings():
     return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-def create_vectorstore(docs, embeddings):
+def create_vectorstore(docs, embeddings, server_id):
+    DB_PATH = f"vectorstore/{server_id}/faiss_index"
     vectorstore = FAISS.from_documents(docs, embeddings)
-    os.makedirs("vectorstore", exist_ok=True)
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     vectorstore.save_local(DB_PATH)
     return vectorstore
 
