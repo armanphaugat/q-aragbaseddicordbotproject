@@ -6,7 +6,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from bs4 import SoupStrainer
 import PyPDF2
 
-URL = "https://www.zomato.com/policies/terms-of-service"
+
 TAGS = ["h1", "h2", "h3", "p", "li"]
 
 def webscraper(url):
