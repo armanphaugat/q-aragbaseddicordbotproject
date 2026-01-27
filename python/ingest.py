@@ -59,6 +59,10 @@ def create_vectorstore(texts, server_id):
     DB_PATH = f"vectorstore/{server_id}/faiss_index"
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     embeddings = create_embeddings()
-    vectorstore = FAISS.from_texts(texts, embeddings)
+    if  os.path.isdir(DB_PATH):
+        vectorstore=FAISS.load_local(DB_PATH,embeddings,allow_dangerous_deserialization=True)
+        vectorstore.add_texts(texts)
+    else:
+        vectorstore = FAISS.from_texts(texts, embeddings)
     vectorstore.save_local(DB_PATH)
     return vectorstore
