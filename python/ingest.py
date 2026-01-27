@@ -6,7 +6,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from bs4 import SoupStrainer
 import PyPDF2
 from io import BytesIO
-TAGS = ["h1", "h2", "h3", "p", "li"]
+TAGS = ["h1", "h2", "h3", "p", "li", "div", "section"]
 def webscraper(url):
     loader = WebBaseLoader(
         url,
@@ -22,7 +22,6 @@ def read_pdf(file):
         f = file
     else:
         raise ValueError("file must be a file path or BytesIO object")
-
     with f:
         reader = PyPDF2.PdfReader(f)
         for page in reader.pages:
@@ -32,20 +31,17 @@ def read_pdf(file):
     return text
 def combine(url=None, file_path=None):
     texts = []
-
     if url:
         texts.extend(webscraper(url))
-
     if file_path:
         texts.append(read_pdf(file_path))
-
     return texts
 def split_texts(texts):
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
-        chunk_overlap=200
+        chunk_overlap=200,
+        separators=["\n\n", "\n", ".", " ", ""]
     )
-
     chunks = []
     for text in texts:
         chunks.extend(splitter.split_text(text))
@@ -56,13 +52,33 @@ def create_embeddings():
         model_name="sentence-transformers/all-MiniLM-L6-v2"
     )
 def create_vectorstore(texts, server_id):
-    DB_PATH = f"vectorstore/{server_id}/faiss_index"
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
+    server_id_str = str(server_id)
+    DB_DIR = f"vectorstore/{server_id_str}"
+    os.makedirs(DB_DIR, exist_ok=True)
     embeddings = create_embeddings()
-    if  os.path.isdir(DB_PATH):
-        vectorstore=FAISS.load_local(DB_PATH,embeddings,allow_dangerous_deserialization=True)
+    if os.path.exists(os.path.join(DB_DIR, "index.faiss")):
+        print(f"Loading existing vectorstore for server {server_id_str}")
+        vectorstore = FAISS.load_local(
+            DB_DIR,  # Pass directory only
+            embeddings,
+            allow_dangerous_deserialization=True
+        )
         vectorstore.add_texts(texts)
     else:
         vectorstore = FAISS.from_texts(texts, embeddings)
-    vectorstore.save_local(DB_PATH)
-    return vectorstore
+    vectorstore.save_local(DB_DIR)
+    print(f"Vectorstore saved to {DB_DIR}")
+    return True
+
+def load_vectorstore(server_id):
+    server_id_str = str(server_id)
+    DB_DIR = f"vectorstore/{server_id_str}"
+    if not os.path.exists(os.path.join(DB_DIR, "index.faiss")):
+        print(f"Vectorstore not found at {DB_DIR}/index.faiss")
+        return None
+    embeddings = create_embeddings()
+    return FAISS.load_local(
+        DB_DIR,  # Pass directory only
+        embeddings,
+        allow_dangerous_deserialization=True
+    )
