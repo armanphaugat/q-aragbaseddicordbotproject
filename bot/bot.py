@@ -6,7 +6,9 @@ import sys
 from io import BytesIO
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), "python"))
 from ingest import webscraper, combine, split_texts, create_vectorstore,read_pdf
+from query import answer_query
 import re
+import asyncio
 url_pattern = r"(https?://\S+)"
 load_dotenv()
 DISCORD_BOT_KEY=os.getenv("DISCORD_BOT_KEY")
@@ -43,5 +45,13 @@ async def upload(ctx):
     else:
         await ctx.send("ReUpload The File")
 
+@bot.command()
+async def ask(ctx,*,question):
+    loop=asyncio.get_running_loop()
+    answer=await loop.run_in_executor(None,answer_query,question)
+    if answer:
+        await ctx.send(answer)
+    else:
+        await ctx.send("No Answer Found")
 
 bot.run(DISCORD_BOT_KEY)
