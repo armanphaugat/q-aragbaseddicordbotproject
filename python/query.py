@@ -26,10 +26,8 @@ Answer:
 """)
 
 def format_docs(docs):
-    """Format retrieved documents into a single string"""
     return "\n\n".join(doc.page_content for doc in docs)
 def load_vectorstore(server_id):
-    """Load vectorstore for a specific server"""
     server_id_str = str(server_id)
     DB_DIR = f"vectorstore/{server_id_str}/faiss_index"
     print(f"Attempting to load vectorstore from: {DB_DIR}")
@@ -46,12 +44,11 @@ def answer_query(question: str, server_id: int):
     vectorstore = load_vectorstore(server_id)
     if vectorstore is None:
         return "⚠️ No content has been uploaded yet. Use `-upload` with URLs or PDF attachments first."
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
+    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
     qa_chain = (
         {"context": retriever | format_docs, "question": RunnablePassthrough()}
         | prompt
         | llm
         | StrOutputParser()
     )
-    
     return qa_chain.invoke(question)

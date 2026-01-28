@@ -13,6 +13,7 @@ def webscraper(url):
         bs_kwargs={"parse_only": SoupStrainer(TAGS)}
     )
     docs = loader.load()
+    print(docs)
     return [doc.page_content for doc in docs]
 def read_pdf(file):
     text = ""
@@ -38,8 +39,8 @@ def combine(url=None, file_path=None):
     return texts
 def split_texts(texts):
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
+        chunk_size=400,
+        chunk_overlap=60,
         separators=["\n\n", "\n", ".", " ", ""]
     )
     chunks = []
@@ -64,6 +65,8 @@ def create_vectorstore(texts, server_id):
             allow_dangerous_deserialization=True
         )
         vectorstore.add_texts(texts)
+        print(texts)
+        print(vectorstore)
     else:
         vectorstore = FAISS.from_texts(texts, embeddings)
     vectorstore.save_local(DB_DIR)
