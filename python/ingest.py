@@ -54,7 +54,7 @@ def create_embeddings():
     )
 def create_vectorstore(texts, server_id):
     server_id_str = str(server_id)
-    DB_DIR = f"vectorstore/{server_id_str}"
+    DB_DIR = f"vectorstore/{server_id_str}/faiss_index"
     os.makedirs(DB_DIR, exist_ok=True)
     embeddings = create_embeddings()
     if os.path.exists(os.path.join(DB_DIR, "index.faiss")):
