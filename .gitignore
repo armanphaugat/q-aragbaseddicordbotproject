@@ -1,2 +1,3 @@
 .env
 vectorstore/
+frontend/node_modules
