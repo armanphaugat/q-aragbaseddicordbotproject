@@ -1,10 +1,27 @@
 import { useState, useRef, useEffect } from "react";
 
-const VECTOR_STORE_ID = "1476466974098985067";
+const DEFAULT_GUILDS = [
+  { id: "1476466974098985067", name: "Main Server" },
+];
 
-const SYSTEM_PROMPT = `You are Nexus, an intelligent RAG-powered assistant for a knowledge base (vector store ID: ${VECTOR_STORE_ID}).
+function getStoredGuilds() {
+  try { return JSON.parse(localStorage.getItem("nexus_guilds") || "null") || DEFAULT_GUILDS; } catch { return DEFAULT_GUILDS; }
+}
+function getStoredActiveId() {
+  return localStorage.getItem("nexus_active_guild") || DEFAULT_GUILDS[0].id;
+}
+function saveGuilds(guilds) {
+  localStorage.setItem("nexus_guilds", JSON.stringify(guilds));
+}
+function saveActiveId(id) {
+  localStorage.setItem("nexus_active_guild", id);
+}
+
+function makeSystemPrompt(guildId) {
+  return `You are Nexus, an intelligent RAG-powered assistant for a knowledge base (vector store ID: ${guildId}).
 Answer questions based on uploaded documents. Be concise, accurate, and helpful.
 If context is unavailable, say so clearly. Use markdown when it adds clarity.`;
+}
 
 const style = document.createElement("style");
 style.textContent = `
@@ -64,8 +81,122 @@ style.textContent = `
   }
 
   code { font-family: 'Geist Mono', monospace !important; }
+  .guild-item:hover { background: rgba(255,255,255,0.06) !important; }
+  .guild-item.active-guild { background: rgba(255,255,255,0.07) !important; border-color: rgba(255,255,255,0.14) !important; }
+  .guild-delete:hover { color: #fca5a5 !important; opacity: 1 !important; }
+  .modal-overlay { animation: fadeSlideUp 0.18s both; }
 `;
 document.head.appendChild(style);
+
+// ── Guild Modal ────────────────────────────────────────────────────
+function GuildModal({ guilds, activeId, onSelect, onCreate, onDelete, onClose }) {
+  const [newName, setNewName] = useState("");
+  const [newId, setNewId] = useState("");
+  const [error, setError] = useState("");
+  const inputRef = useRef(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const handleCreate = () => {
+    const trimId = newId.trim();
+    const trimName = newName.trim();
+    if (!trimId) { setError("Guild ID is required."); return; }
+    if (guilds.find(g => g.id === trimId)) { setError("This Guild ID already exists."); return; }
+    onCreate({ id: trimId, name: trimName || `Guild ${trimId.slice(0, 6)}` });
+    setNewId(""); setNewName(""); setError("");
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose} style={{
+      position: "fixed", inset: 0, zIndex: 1000,
+      background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: 24
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        width: "100%", maxWidth: 420,
+        background: "#16181f", border: "1px solid rgba(255,255,255,0.1)",
+        borderRadius: 18, overflow: "hidden",
+        boxShadow: "0 24px 80px rgba(0,0,0,0.7)"
+      }}>
+        {/* Header */}
+        <div style={{ padding: "20px 20px 0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "#fff", letterSpacing: "-0.02em" }}>Switch Guild</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>Select or create a knowledge base</div>
+          </div>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", cursor: "pointer", fontSize: 18, lineHeight: 1, padding: 4 }}>✕</button>
+        </div>
+
+        {/* Guild list */}
+        <div style={{ padding: "14px 16px 6px", display: "flex", flexDirection: "column", gap: 6, maxHeight: 220, overflowY: "auto" }}>
+          {guilds.map(g => (
+            <div key={g.id} className={`guild-item${g.id === activeId ? " active-guild" : ""}`}
+              onClick={() => { onSelect(g.id); onClose(); }}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "10px 12px", borderRadius: 10, cursor: "pointer",
+                border: "1px solid rgba(255,255,255,0.06)",
+                background: "transparent", transition: "all 0.12s"
+              }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: 7,
+                  background: g.id === activeId ? "linear-gradient(135deg,#fff,#aaa)" : "rgba(255,255,255,0.07)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 11, fontWeight: 700, color: g.id === activeId ? "#111" : "rgba(255,255,255,0.4)",
+                  flexShrink: 0
+                }}>{g.name.slice(0, 2).toUpperCase()}</div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: g.id === activeId ? "#fff" : "rgba(255,255,255,0.75)" }}>{g.name}</div>
+                  <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.25)", fontFamily: "'Geist Mono'" }}>{g.id.slice(0, 10)}…</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {g.id === activeId && <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 6px #4ade80" }} />}
+                {guilds.length > 1 && (
+                  <span className="guild-delete" onClick={e => { e.stopPropagation(); onDelete(g.id); }}
+                    style={{ fontSize: 13, color: "rgba(255,255,255,0.2)", cursor: "pointer", opacity: 0.5, transition: "all 0.12s", padding: "2px 4px" }}>✕</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Create new */}
+        <div style={{ padding: "12px 16px 18px", borderTop: "1px solid rgba(255,255,255,0.06)", marginTop: 8 }}>
+          <div style={{ fontSize: 11, color: "rgba(255,255,255,0.3)", letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 10 }}>New Guild</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <input ref={inputRef} value={newId} onChange={e => { setNewId(e.target.value); setError(""); }}
+              placeholder="Guild ID (e.g. 1234567890123456789)"
+              onKeyDown={e => e.key === "Enter" && handleCreate()}
+              style={{
+                background: "rgba(255,255,255,0.04)", border: `1px solid ${error ? "rgba(252,165,165,0.4)" : "rgba(255,255,255,0.08)"}`,
+                borderRadius: 9, color: "rgba(255,255,255,0.85)", fontSize: 13,
+                padding: "9px 12px", outline: "none", fontFamily: "'Geist Mono', monospace",
+                transition: "border-color 0.15s"
+              }} />
+            <input value={newName} onChange={e => setNewName(e.target.value)}
+              placeholder="Display name (optional)"
+              onKeyDown={e => e.key === "Enter" && handleCreate()}
+              style={{
+                background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: 9, color: "rgba(255,255,255,0.85)", fontSize: 13,
+                padding: "9px 12px", outline: "none", fontFamily: "'Geist', sans-serif",
+                transition: "border-color 0.15s"
+              }} />
+            {error && <div style={{ fontSize: 12, color: "#fca5a5" }}>{error}</div>}
+            <button onClick={handleCreate} style={{
+              padding: "10px", background: "rgba(255,255,255,0.07)",
+              border: "1px solid rgba(255,255,255,0.12)", borderRadius: 9,
+              color: "rgba(255,255,255,0.8)", fontSize: 13, fontWeight: 500,
+              cursor: "pointer", transition: "all 0.15s", fontFamily: "'Geist', sans-serif"
+            }}>+ Add Guild</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ── Markdown renderer ──────────────────────────────────────────────
 function Markdown({ text }) {
@@ -144,6 +275,30 @@ const SUGGESTIONS = [
 ];
 
 export default function App() {
+  const [guilds, setGuilds] = useState(getStoredGuilds);
+  const [activeGuildId, setActiveGuildId] = useState(getStoredActiveId);
+  const [showGuildModal, setShowGuildModal] = useState(false);
+
+  const activeGuild = guilds.find(g => g.id === activeGuildId) || guilds[0];
+  const VECTOR_STORE_ID = activeGuild.id;
+  const SYSTEM_PROMPT = makeSystemPrompt(VECTOR_STORE_ID);
+
+  const handleSelectGuild = (id) => {
+    setActiveGuildId(id);
+    saveActiveId(id);
+    setMessages([]); setHistory([]);
+  };
+  const handleCreateGuild = (guild) => {
+    const updated = [...guilds, guild];
+    setGuilds(updated); saveGuilds(updated);
+    handleSelectGuild(guild.id);
+  };
+  const handleDeleteGuild = (id) => {
+    const updated = guilds.filter(g => g.id !== id);
+    setGuilds(updated); saveGuilds(updated);
+    if (activeGuildId === id) handleSelectGuild(updated[0].id);
+  };
+
   const [messages, setMessages] = useState([]);
   const [history, setHistory] = useState([]);
   const [input, setInput] = useState("");
@@ -293,16 +448,31 @@ export default function App() {
           ))}
         </div>
 
-        <div style={{
+        <button onClick={() => setShowGuildModal(true)} style={{
           display: "flex", alignItems: "center", gap: 7, padding: "5px 12px",
           borderRadius: 20, background: "rgba(255,255,255,0.04)",
           border: "1px solid rgba(255,255,255,0.07)",
-          fontSize: 11, color: "rgba(255,255,255,0.28)"
+          fontSize: 11, color: "rgba(255,255,255,0.45)",
+          cursor: "pointer", transition: "all 0.15s", fontFamily: "'Geist', sans-serif"
         }}>
-          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 8px #4ade80" }} />
-          <span style={{ fontFamily: "'Geist Mono'", fontSize: 10.5 }}>{VECTOR_STORE_ID.slice(0, 8)}…</span>
-        </div>
+          <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 8px #4ade80", flexShrink: 0 }} />
+          <span style={{ fontWeight: 500, color: "rgba(255,255,255,0.6)", maxWidth: 90, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeGuild.name}</span>
+          <span style={{ fontFamily: "'Geist Mono'", fontSize: 10, color: "rgba(255,255,255,0.25)" }}>{VECTOR_STORE_ID.slice(0, 6)}…</span>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+
       </div>
+
+      {showGuildModal && (
+        <GuildModal
+          guilds={guilds}
+          activeId={activeGuildId}
+          onSelect={handleSelectGuild}
+          onCreate={handleCreateGuild}
+          onDelete={handleDeleteGuild}
+          onClose={() => setShowGuildModal(false)}
+        />
+      )}
 
       {/* Body */}
       {tab === "chat" ? (

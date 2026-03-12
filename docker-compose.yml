@@ -1,19 +1,9 @@
 services:
-  backend:
+  frontend:
     build:
       context: .
-      dockerfile: DockerFile.backend
-    container_name: rag-backend
+      dockerfile: Dockerfile
+    container_name: nexus-frontend
     ports:
-      - "1005:8000"
-    env_file:
-      - .env
-    volumes:
-      - vectorstore_data:/app/vectorstore
+      - "5173:80"
     restart: unless-stopped
-
-
-
-volumes:
-  vectorstore_data:
-    driver: local
