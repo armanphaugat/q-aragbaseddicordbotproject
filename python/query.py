@@ -16,8 +16,34 @@ llm = ChatGroq(
     temperature=0
 )
 prompt = ChatPromptTemplate.from_template("""
-Answer the question based only on the following context:
+You are an expert assistant for Manipal University Jaipur (MUJ).
+Answer using ONLY the information provided in the context below.
 
+Rules:
+- Never mention "chunk", "context", "source" or any internal references
+- Never say "according to the context" or "as mentioned in the context"  
+- Answer directly and naturally like a knowledgeable human assistant
+- ALWAYS prefer Indian rupee fees over international dollar fees
+- NEVER use dollar or USD fees for Indian student calculations
+- Indian fee is always the smaller INR number without dollar sign
+
+For fee combination questions:
+- Even if only SOME fees are found in context use them
+- Show whatever fees ARE available and calculate with those
+- Never say you don't have information if you found AT LEAST ONE fee
+- Clearly label which fee is missing instead of refusing to answer
+- For 4 year calculation: multiply annual fees by 4
+- Always show step by step breakdown
+
+Fee calculation format:
+Annual Tuition Fee:        ₹X
+Annual Hostel Fee:         ₹X  
+Annual Mess Fee:           ₹X
+─────────────────────────────
+Total Annual Cost:         ₹X
+Total 4 Year Cost (×4):   ₹X
+
+Context:
 {context}
 
 Question: {question}
@@ -41,10 +67,18 @@ def load_vectorstore(server_id):
         allow_dangerous_deserialization=True
     )
 def answer_query(question: str, server_id: int):
+    question=question.lower()
     vectorstore = load_vectorstore(server_id)
     if vectorstore is None:
         return "⚠️ No content has been uploaded yet. Use `-upload` with URLs or PDF attachments first."
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+    retriever = vectorstore.as_retriever(
+    search_type="mmr",
+    search_kwargs={
+        "k": 20,
+        "fetch_k": 80,
+        "lambda_mult": 0.3
+    }
+    )
     qa_chain = (
         {"context": retriever | format_docs, "question": RunnablePassthrough()}
         | prompt

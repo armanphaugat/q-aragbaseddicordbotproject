@@ -13,8 +13,8 @@ def webscraper(url):
         bs_kwargs={"parse_only": SoupStrainer(TAGS)}
     )
     docs = loader.load()
-    print(docs)
-    return [doc.page_content for doc in docs]
+    print()
+    return [doc.page_content.lower() for doc in docs]
 def read_pdf(file):
     text = ""
     if isinstance(file, str):
@@ -28,7 +28,7 @@ def read_pdf(file):
         for page in reader.pages:
             page_text = page.extract_text()
             if page_text:
-                text += page_text + "\n"
+                text += page_text.lower() + "\n"
     return text
 def combine(url=None, file_path=None):
     texts = []
