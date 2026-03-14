@@ -1,6 +1,3 @@
-# Fixed RAG Implementation
-
-# Imports
 from langchain.embeddings.openai import OpenAIEmbeddings  # fixed import
 from langchain.vectorstores.faiss import FAISS             # fixed import
 from langchain_text_splitters import RecursiveCharacterTextSplitter

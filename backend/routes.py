@@ -6,7 +6,7 @@ import sys
 import os
 import asyncio
 import re
-
+print(os.getenv("API_KEY"))
 app = FastAPI()
 
 # Allow frontend (React dev server) to call the API

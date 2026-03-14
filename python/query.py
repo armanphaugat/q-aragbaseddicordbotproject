@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 import os
-load_dotenv()
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+load_dotenv(override=True)
+GROQ_API_KEY = os.getenv("API_KEY")
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
