@@ -6,9 +6,7 @@ import sys
 import os
 import asyncio
 import re
-
 app = FastAPI()
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -16,19 +14,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), "python"))
 from ingest import webscraper, split_texts, create_vectorstore, read_pdf
 from query import answer_query
-
 url_pattern = r"(https?://[^\s]+)"
-
-
 @app.get("/")
 def home():
     return {"message": "RAG API running"}
-
-
 @app.post("/query")
 async def query_api(request: Request):
     try:
@@ -51,11 +43,9 @@ async def query_api(request: Request):
     except Exception as e:
         print(f"[query_api] Error: {e}")
         raise HTTPException(status_code=500, detail="Failed to process query.")
-
-
 @app.put("/upload")
 async def upload_api(
-    guild_id: str = Form(...),                        # ← moved to top (required first)
+    guild_id: str = Form(...),
     files: Optional[List[UploadFile]] = File(None),
     urls: Optional[str] = Form(None),
 ):
@@ -63,7 +53,7 @@ async def upload_api(
     if not guild_id:
         raise HTTPException(status_code=400, detail="'guild_id' cannot be empty.")
 
-    pdf_files = [f for f in (files or []) if f.filename]  # filter empty file inputs
+    pdf_files = [f for f in (files or []) if f.filename]
     links = re.findall(url_pattern, urls) if urls else []
 
     if not pdf_files and not links:
