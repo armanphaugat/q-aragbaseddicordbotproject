@@ -9,7 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_groq import ChatGroq
-
+from langchain_google_genai import ChatGoogleGenerativeAI
 embeddings = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
@@ -76,8 +76,6 @@ Question: {question}
 
 Answer:
 """)
-
-# ✅ Cache
 _vectorstore_cache: dict = {}
 
 def get_db_dir(server_id):
@@ -167,5 +165,15 @@ def answer_query(question: str, server_id: int):
         | llm
         | StrOutputParser()
     )
-
-    return qa_chain.invoke(question)
+    try:
+        return qa_chain.invoke(question)
+    except Exception as e:
+        print(e)
+        gemini_llm=ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0)
+        gemini_chain = (
+            {"context": retriever | format_docs, "question": RunnablePassthrough()}
+            | prompt
+            | gemini_llm
+            | StrOutputParser()
+        )
+        return gemini_chain.invoke(question)
