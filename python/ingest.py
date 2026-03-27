@@ -58,8 +58,6 @@ def read_pdf(file):
         file = open(file, "rb")
     else:
         raise ValueError("file must be a file path or BytesIO object")
-
-    # ✅ Try pdfplumber first — handles tables better
     try:
         if isinstance(file, BytesIO):
             file.seek(0)
@@ -83,8 +81,6 @@ def read_pdf(file):
             return text
     except Exception as e:
         print(f"⚠️ pdfplumber failed: {e} — trying PyPDF2")
-
-    # ✅ Fallback to PyPDF2
     try:
         if isinstance(file, BytesIO):
             file.seek(0)
