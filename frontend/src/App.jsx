@@ -865,11 +865,12 @@ function UploadTab({ guildId }) {
     if (!contactFile) return;
     setContactUploading(true); setContactStatus(null);
     const fd = new FormData();
+    fd.append("guild_id", guildId);
     fd.append("file", contactFile);
     try {
       const res = await fetch("http://localhost:8000/upload-contacts", { method:"PUT", body:fd });
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
       const d = await res.json();
+      if (!res.ok) throw new Error(d.detail || `Server error ${res.status}`);
       setContactStatus({ ok:true, msg:d.message });
       setContactFile(null);
     } catch (e) {
