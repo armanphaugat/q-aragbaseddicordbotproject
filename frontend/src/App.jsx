@@ -607,6 +607,227 @@ function GuildModal({ guilds, activeId, onSelect, onCreate, onDelete, onClose })
 }
 
 // ─────────────────────────────────────────────
+// SUB URLS TAB
+// ─────────────────────────────────────────────
+function SubUrlsTab({ guildId }) {
+  const [baseUrl, setBaseUrl] = useState("");
+  const [results, setResults] = useState(null);    // { base_url, sub_urls, count, error }
+  const [fetching, setFetching] = useState(false);
+  const [selected, setSelected] = useState(new Set());
+  const [filter, setFilter] = useState("");
+  const [ingestStatus, setIngestStatus] = useState(null);
+  const [ingesting, setIngesting] = useState(false);
+
+  const fetchSubUrls = async () => {
+    const url = baseUrl.trim();
+    if (!url) return;
+    setFetching(true); setResults(null); setSelected(new Set()); setFilter(""); setIngestStatus(null);
+    try {
+      const res = await fetch(`http://localhost:8000/sub-urls?url=${encodeURIComponent(url)}`);
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e?.detail || `HTTP ${res.status}`); }
+      const data = await res.json();
+      setResults(data);
+    } catch (e) {
+      setResults({ base_url: url, sub_urls: [], count: 0, error: e.message });
+    } finally { setFetching(false); }
+  };
+
+  const toggleSelect = (u) => setSelected(prev => {
+    const next = new Set(prev);
+    next.has(u) ? next.delete(u) : next.add(u);
+    return next;
+  });
+  const selectAll = () => setSelected(new Set(filtered));
+  const clearAll  = () => setSelected(new Set());
+
+  const filtered = results
+    ? results.sub_urls.filter(u => !filter || u.toLowerCase().includes(filter.toLowerCase()))
+    : [];
+
+  const ingestSelected = async () => {
+    if (!selected.size) return;
+    setIngesting(true); setIngestStatus(null);
+    const fd = new FormData();
+    fd.append("guild_id", guildId);
+    fd.append("urls", [...selected].join("\n"));
+    try {
+      const res = await fetch("http://localhost:8000/upload", { method: "PUT", body: fd });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const d = await res.json();
+      setIngestStatus({ ok: true, msg: `${d.message} — ${d.urls_processed} URL(s) ingested into knowledge base.` });
+    } catch (e) {
+      setIngestStatus({ ok: false, msg: e.message });
+    } finally { setIngesting(false); }
+  };
+
+  return (
+    <div className="page-scroll" style={{ flex: 1, overflowY: "auto", padding: "40px 48px" }}>
+      <div style={{ maxWidth: 720, margin: "0 auto" }}>
+        {/* Header */}
+        <div className="section-pill">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+          Sub URL Discovery
+        </div>
+        <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 700, color: "var(--ink)", letterSpacing: "-0.03em", marginBottom: 6 }}>
+          Discover Sub-URLs
+        </h2>
+        <p style={{ fontSize: 14, color: "var(--ink-60)", marginBottom: 32, lineHeight: 1.6 }}>
+          Enter a website URL to extract all its hyperlinks. Select the ones you want and ingest them directly into your knowledge base.
+        </p>
+
+        {/* URL Input Card */}
+        <div className="card" style={{ padding: 24, marginBottom: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: "var(--rust-pale)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--rust)" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            </div>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: "var(--ink)" }}>Target URL</div>
+              <div style={{ fontSize: 12, color: "var(--ink-35)" }}>Enter the page to scrape links from</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <input
+              value={baseUrl}
+              onChange={e => setBaseUrl(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && fetchSubUrls()}
+              placeholder="https://manipal.edu/muj"
+              className="muj-input"
+              style={{ flex: 1, background: "var(--cream)", border: "1.5px solid var(--ink-15)", borderRadius: 12, color: "var(--ink)", fontSize: 13.5, padding: "11px 16px", outline: "none", fontFamily: "'DM Sans', sans-serif", transition: "border-color 0.15s" }}
+            />
+            <button
+              className="btn-primary"
+              onClick={fetchSubUrls}
+              disabled={fetching || !baseUrl.trim()}
+              style={{ padding: "11px 22px", borderRadius: 12, display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              {fetching
+                ? <><div className="spinner" />Scanning…</>
+                : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Discover</>
+              }
+            </button>
+          </div>
+        </div>
+
+        {/* Results */}
+        {results && (
+          <div className="anim-fadeup">
+            {results.error ? (
+              <div style={{ padding: "16px 20px", borderRadius: 14, background: "rgba(185,28,28,0.06)", border: "1px solid rgba(185,28,28,0.2)", color: "#b91c1c", fontSize: 13.5 }}>
+                ✗ {results.error}
+              </div>
+            ) : (
+              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
+                {/* Results Header */}
+                <div style={{ padding: "16px 20px", borderBottom: "1px solid var(--ink-08)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--rust-pale)", border: "1px solid rgba(184,74,26,0.15)", borderRadius: 100, padding: "4px 12px" }}>
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--rust)" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--rust)" }}>{results.count} URLs found</span>
+                    </div>
+                    {selected.size > 0 && (
+                      <div style={{ fontSize: 12, color: "var(--ink-60)", fontWeight: 500 }}>
+                        {selected.size} selected
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    <input
+                      value={filter}
+                      onChange={e => setFilter(e.target.value)}
+                      placeholder="Filter URLs…"
+                      className="muj-input"
+                      style={{ background: "var(--cream)", border: "1.5px solid var(--ink-15)", borderRadius: 10, color: "var(--ink)", fontSize: 12.5, padding: "7px 12px", outline: "none", width: 180, fontFamily: "'DM Sans', sans-serif" }}
+                    />
+                    <button className="btn-secondary" onClick={selectAll} style={{ padding: "7px 14px", fontSize: 12, borderRadius: 10 }}>Select All</button>
+                    <button className="btn-secondary" onClick={clearAll} style={{ padding: "7px 14px", fontSize: 12, borderRadius: 10 }}>Clear</button>
+                  </div>
+                </div>
+
+                {/* URL List */}
+                <div className="chat-scroll" style={{ maxHeight: 340, overflowY: "auto" }}>
+                  {filtered.length === 0 ? (
+                    <div style={{ padding: "32px 20px", textAlign: "center", color: "var(--ink-35)", fontSize: 13.5 }}>
+                      No URLs match your filter.
+                    </div>
+                  ) : (
+                    filtered.map((u, i) => {
+                      const isSelected = selected.has(u);
+                      return (
+                        <div
+                          key={i}
+                          onClick={() => toggleSelect(u)}
+                          style={{
+                            display: "flex", alignItems: "center", gap: 12,
+                            padding: "10px 20px",
+                            borderBottom: i < filtered.length - 1 ? "1px solid var(--ink-08)" : "none",
+                            cursor: "pointer",
+                            background: isSelected ? "var(--rust-faint)" : "transparent",
+                            transition: "background 0.12s",
+                          }}>
+                          {/* Checkbox */}
+                          <div style={{
+                            width: 18, height: 18, borderRadius: 6, flexShrink: 0,
+                            border: `2px solid ${isSelected ? "var(--rust)" : "var(--ink-15)"}`,
+                            background: isSelected ? "var(--rust)" : "transparent",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            transition: "all 0.12s",
+                          }}>
+                            {isSelected && (
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            )}
+                          </div>
+                          {/* URL text */}
+                          <span style={{ fontSize: 12.5, color: isSelected ? "var(--rust)" : "var(--ink-60)", fontFamily: "'DM Mono', monospace", wordBreak: "break-all", flex: 1, lineHeight: 1.5 }}>
+                            {u}
+                          </span>
+                          {/* External link icon */}
+                          <a href={u} target="_blank" rel="noopener noreferrer"
+                            onClick={e => e.stopPropagation()}
+                            style={{ flexShrink: 0, color: "var(--ink-35)", transition: "color 0.12s" }}
+                            title="Open in new tab">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                          </a>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Ingest footer */}
+                <div style={{ padding: "14px 20px", borderTop: "1px solid var(--ink-08)", background: "var(--cream)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ fontSize: 12.5, color: "var(--ink-60)" }}>
+                    {selected.size > 0
+                      ? `${selected.size} URL${selected.size > 1 ? "s" : ""} selected for ingestion`
+                      : "Select URLs above to ingest into your knowledge base"}
+                  </div>
+                  <button
+                    className="btn-primary"
+                    onClick={ingestSelected}
+                    disabled={ingesting || selected.size === 0}
+                    style={{ padding: "10px 20px", fontSize: 13, borderRadius: 12, display: "flex", alignItems: "center", gap: 8 }}>
+                    {ingesting
+                      ? <><div className="spinner" />Ingesting…</>
+                      : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Ingest Selected</>
+                    }
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Ingest status */}
+        {ingestStatus && (
+          <div className="anim-fadein" style={{ marginTop: 16, padding: "14px 18px", borderRadius: 14, fontSize: 13.5, lineHeight: 1.55, background: ingestStatus.ok ? "rgba(22,163,74,0.06)" : "rgba(185,28,28,0.06)", border: `1px solid ${ingestStatus.ok ? "rgba(22,163,74,0.2)" : "rgba(185,28,28,0.2)"}`, color: ingestStatus.ok ? "#15803d" : "#b91c1c" }}>
+            {ingestStatus.ok ? "✓ " : "✗ "}{ingestStatus.msg}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // UPLOAD TAB (backend unchanged)
 // ─────────────────────────────────────────────
 function UploadTab({ guildId }) {
@@ -615,6 +836,12 @@ function UploadTab({ guildId }) {
   const [uploadStatus, setUploadStatus] = useState(null);
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef(null);
+
+  // ── Contacts xlsx state ──
+  const [contactFile, setContactFile] = useState(null);
+  const [contactStatus, setContactStatus] = useState(null);
+  const [contactUploading, setContactUploading] = useState(false);
+  const contactRef = useRef(null);
 
   const handleUpload = async () => {
     if (!uploadUrls.trim() && !uploadFiles.length) return;
@@ -632,6 +859,22 @@ function UploadTab({ guildId }) {
     } catch (e) {
       setUploadStatus({ ok:false, msg:e.message });
     } finally { setUploading(false); }
+  };
+
+  const handleContactUpload = async () => {
+    if (!contactFile) return;
+    setContactUploading(true); setContactStatus(null);
+    const fd = new FormData();
+    fd.append("file", contactFile);
+    try {
+      const res = await fetch("http://localhost:8000/upload-contacts", { method:"PUT", body:fd });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const d = await res.json();
+      setContactStatus({ ok:true, msg:d.message });
+      setContactFile(null);
+    } catch (e) {
+      setContactStatus({ ok:false, msg:e.message });
+    } finally { setContactUploading(false); }
   };
 
   return (
@@ -714,6 +957,91 @@ function UploadTab({ guildId }) {
               : <><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Upload to Knowledge Base</>
             }
           </button>
+
+          {/* ── Contacts Spreadsheet Card ── */}
+          <div style={{ marginTop:12, borderTop:"1.5px dashed var(--ink-15)", paddingTop:28 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
+              <div style={{ width:36, height:36, borderRadius:10, background:"rgba(16,163,74,0.08)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+              </div>
+              <div>
+                <div style={{ fontSize:14, fontWeight:600, color:"var(--ink)" }}>Faculty Contact Sheet</div>
+                <div style={{ fontSize:12, color:"var(--ink-35)" }}>
+                  Phone, email &amp; cabin answers come directly from this — not the vector store
+                </div>
+              </div>
+              <div style={{ marginLeft:"auto" }}>
+                <span style={{ fontSize:10.5, fontWeight:600, letterSpacing:"0.05em", textTransform:"uppercase", background:"rgba(16,163,74,0.1)", color:"#16a34a", border:"1px solid rgba(16,163,74,0.2)", borderRadius:100, padding:"3px 10px" }}>
+                  Priority Source
+                </span>
+              </div>
+            </div>
+
+            <p style={{ fontSize:12.5, color:"var(--ink-60)", marginBottom:14, lineHeight:1.6 }}>
+              Upload the faculty xlsx (same format as CSE_Faculty_List). When anyone asks for a mobile number, email, or cabin location, the bot answers from this sheet instantly and accurately, without touching the vector store.
+            </p>
+
+            <div
+              className="upload-zone"
+              onClick={() => contactRef.current?.click()}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => {
+                e.preventDefault();
+                const f = [...e.dataTransfer.files].find(f => f.name.endsWith(".xlsx"));
+                if (f) setContactFile(f);
+              }}
+              style={{ padding:"24px 20px", borderColor: contactFile ? "var(--rust)" : undefined, background: contactFile ? "var(--rust-faint)" : undefined }}>
+              <div style={{ width:40, height:40, borderRadius:12, background:"rgba(16,163,74,0.08)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+              </div>
+              {contactFile ? (
+                <div style={{ textAlign:"center" }}>
+                  <div style={{ fontSize:13.5, fontWeight:600, color:"var(--rust)" }}>{contactFile.name}</div>
+                  <div style={{ fontSize:12, color:"var(--ink-35)", marginTop:3 }}>
+                    {(contactFile.size / 1024).toFixed(1)} KB · Click to change
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize:13.5, color:"var(--ink-60)", textAlign:"center" }}>
+                    Drop <strong>.xlsx</strong> here or <span style={{ color:"var(--rust)", fontWeight:500 }}>browse</span>
+                  </div>
+                  <div style={{ fontSize:12, color:"var(--ink-35)" }}>Faculty list spreadsheet</div>
+                </>
+              )}
+              <input ref={contactRef} type="file" accept=".xlsx" style={{ display:"none" }}
+                onChange={e => { if (e.target.files[0]) setContactFile(e.target.files[0]); }} />
+            </div>
+
+            {contactStatus && (
+              <div style={{ marginTop:10, padding:"12px 16px", borderRadius:12, fontSize:13, lineHeight:1.55,
+                background: contactStatus.ok ? "rgba(22,163,74,0.06)" : "rgba(185,28,28,0.06)",
+                border:`1px solid ${contactStatus.ok ? "rgba(22,163,74,0.2)" : "rgba(185,28,28,0.2)"}`,
+                color: contactStatus.ok ? "#15803d" : "#b91c1c" }}>
+                {contactStatus.ok ? "✓ " : "✗ "}{contactStatus.msg}
+              </div>
+            )}
+
+            <button
+              onClick={handleContactUpload}
+              disabled={contactUploading || !contactFile}
+              style={{
+                marginTop:12, width:"100%", padding:"12px", fontSize:13.5, borderRadius:12,
+                display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+                background: contactFile && !contactUploading ? "#16a34a" : "var(--ink-08)",
+                color: contactFile && !contactUploading ? "#fff" : "var(--ink-35)",
+                border:"none", cursor: contactFile && !contactUploading ? "pointer" : "not-allowed",
+                fontFamily:"'DM Sans', sans-serif", fontWeight:600,
+                transition:"all 0.2s",
+                boxShadow: contactFile && !contactUploading ? "0 4px 16px rgba(16,163,74,0.3)" : "none",
+              }}>
+              {contactUploading
+                ? <><div className="spinner" style={{ borderTopColor:"#fff", borderColor:"rgba(255,255,255,0.3)" }} />Uploading contacts…</>
+                : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>Save Contact Sheet</>
+              }
+            </button>
+          </div>
+
         </div>
       </div>
     </div>
@@ -873,7 +1201,7 @@ export default function App() {
 
           {/* Nav links */}
           <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-            {[["home","Home"],["upload","Knowledge Base"]].map(([id, label]) => (
+            {[["home","Home"],["suburls","Sub URLs"],["upload","Knowledge Base"]].map(([id, label]) => (
               <button key={id} className={`nav-link${tab===id?" active":""}`} onClick={() => setTab(id)}>{label}</button>
             ))}
           </div>
@@ -893,6 +1221,7 @@ export default function App() {
         {/* ── BODY ── */}
         <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}>
           {tab === "home" && <HomePage onChat={() => setChatOpen(true)} />}
+          {tab === "suburls" && <SubUrlsTab key={VECTOR_STORE_ID} guildId={VECTOR_STORE_ID} />}
           {tab === "upload" && <UploadTab key={VECTOR_STORE_ID} guildId={VECTOR_STORE_ID} />}
         </div>
 

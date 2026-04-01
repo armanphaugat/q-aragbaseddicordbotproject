@@ -17,7 +17,29 @@ app.add_middleware(
 sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), "python"))
 from ingest import webscraper, split_texts, create_vectorstore, read_pdf
 from query import answer_query
+from sub_urls import get_sub_urls
+from contacts.xlsx_contacts import ingest_contacts_to_vectorstore
 url_pattern = r"(https?://[^\s]+)"
+
+@app.get("/sub-urls")
+async def sub_urls_api(url: str):
+    """
+    Scrape and return all unique sub-URLs found on the given page.
+    Query param: ?url=https://example.com
+    """
+    url = url.strip()
+    if not url:
+        raise HTTPException(status_code=400, detail="'url' query parameter is required.")
+    if not re.match(r"https?://", url):
+        raise HTTPException(status_code=400, detail="'url' must start with http:// or https://")
+    try:
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, get_sub_urls, url)
+        return result
+    except Exception as e:
+        print(f"[sub_urls_api] Error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch sub-URLs.")
+
 @app.get("/")
 def home():
     return {"message": "RAG API running"}
@@ -103,3 +125,60 @@ async def upload_api(
         "urls_processed": len(links),
         "pdfs_processed": len(pdf_files),
     }
+
+@app.put("/upload-contacts")
+async def upload_contacts_api(
+    guild_id: str = Form(...),
+    file: UploadFile = File(...),
+):
+    """
+    Upload an xlsx faculty/contacts file and ingest every row as a
+    text chunk into the guild's FAISS vector store.
+
+    Each row becomes one self-contained chunk:
+        Name: ...
+        Designation: ...
+        Mobile: ...
+        Email: ...
+        Cabin: ...
+        Extension: ...
+
+    The LLM answers contact questions through normal RAG retrieval —
+    no separate lookup code path needed.
+    """
+    guild_id = guild_id.strip()
+    if not guild_id:
+        raise HTTPException(status_code=400, detail="'guild_id' is required.")
+
+    filename = file.filename or ""
+    if not filename.endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="Only .xlsx files are accepted.")
+
+    try:
+        contents = await file.read()
+        if not contents:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+
+        from io import BytesIO
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(
+            None,
+            ingest_contacts_to_vectorstore,
+            BytesIO(contents),
+            guild_id,
+        )
+
+        if result["status"] != "success":
+            raise HTTPException(status_code=500, detail=result["error"])
+
+        return {
+            "status":  "success",
+            "message": f"Ingested {result['rows']} faculty records as {result['chunks']} chunks into knowledge base.",
+            "rows":    result["rows"],
+            "chunks":  result["chunks"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[upload_contacts] Error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to ingest contacts: {e}")

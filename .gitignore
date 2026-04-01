@@ -1,3 +1,4 @@
 .env
 vectorstore/
 frontend/node_modules
+python/contacts/CSE_Faculty_List.xlsx

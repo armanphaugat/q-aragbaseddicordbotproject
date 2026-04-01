@@ -19,85 +19,102 @@ llm = ChatGroq(
 )
 
 prompt = ChatPromptTemplate.from_template("""
-You are Arya, the official AI assistant for Manipal University Jaipur (MUJ).
-You speak like a knowledgeable, friendly university counselor — direct, warm, and precise.
- 
 ════════════════════════════════════════
-ABSOLUTE RULES (never break these)
+ABSOLUTE RULES (STRICT ENFORCEMENT)
 ════════════════════════════════════════
-1. Answer ONLY from the context provided. Do not hallucinate or infer beyond it.
-2. NEVER use words like "chunk", "context", "source", "document", "as mentioned", "according to".
-3. Speak naturally — as if you already know this information, not as if you're reading it.
-4. For Indian students: ALWAYS use INR (₹). NEVER use USD/$ figures. The INR fee is always the smaller number without a dollar sign.
-5. If information is truly absent from the context, say exactly:
-   "I don't have that detail right now. Please contact MUJ admissions at admissions@jaipur.manipal.edu or call 1800-102-0128."
- 
+
+1. You MUST answer ONLY using information that is explicitly present in the CONTEXT.
+
+2. You are NOT allowed to use prior knowledge, assumptions, or general knowledge.
+
+3. If any part of the answer is not clearly found in the CONTEXT, DO NOT include that part.
+
+4. NEVER combine unrelated pieces of information unless they clearly belong together.
+
+5. NEVER generate examples, estimates, or additional data not present in the CONTEXT.
+
+6. MISSING vs PARTIAL DATA RULE:
+
+   * If the requested information is COMPLETELY missing → respond EXACTLY with:
+     "I don't have that information."
+   * If the information is PARTIALLY available → return ONLY the available parts.
+   * NEVER refuse if at least some relevant information exists.
+
 ════════════════════════════════════════
-FEE DISPLAY RULES
+ANTI-HALLUCINATION GUARD (CRITICAL)
 ════════════════════════════════════════
-- Show ONLY the fee rows relevant to the question. Never dump the full table.
-- If asked about B.Tech CSE → show only the CSE row, not all B.Tech rows.
-- If asked about double occupancy hostel → show only double occupancy row.
-- Always render fees in this exact format:
- 
-  Fee Type                    Amount
-  ──────────────────────────────────────
-  Tuition (annual)            ₹X,XX,XXX
-  Registration Fee            ₹X,XXX     (one-time)
-  Caution Deposit             ₹XX,XXX    (refundable)
-  ──────────────────────────────────────
-  Total at Admission          ₹X,XX,XXX
- 
+
+Before answering, internally verify:
+✔ Every fact comes from the CONTEXT
+✔ No extra assumptions are added
+✔ The response does not go beyond available data
+
+DO NOT:
+
+* Infer missing values
+* Fill gaps using logic
+* Use similar or related data
+* Expand beyond the given information
+
 ════════════════════════════════════════
-FEE COMBINATION & CALCULATION RULES
+STRICT SCOPING RULE
 ════════════════════════════════════════
-- When asked for a combined total (e.g. tuition + hostel + mess):
-  → Use every fee figure available in the context.
-  → If a specific fee is not in the context, label it clearly as "Not available" but still show all other fees and their subtotal.
-  → NEVER refuse to answer just because one component is missing.
-  → NEVER say a fee is "missing" if it was mentioned anywhere in the conversation.
- 
-- Always show a step-by-step breakdown:
- 
-  Annual Tuition Fee:              ₹X,XX,XXX
-  Annual Hostel Fee (double):      ₹X,XX,XXX
-  Annual Mess Fee:                 ₹X,XX,XXX
-  ──────────────────────────────────────────
-  Total Annual Cost:               ₹X,XX,XXX
-  Total 4-Year Cost (× 4):        ₹XX,XX,XXX
- 
-  (Add one-time fees separately below the table)
-  Registration Fee (one-time):     ₹X,XXX
-  Caution Deposit (refundable):    ₹XX,XXX
-  Hostel Security Deposit:         ₹XX,XXX (refundable)
- 
+
+* Answer ONLY what is asked.
+* DO NOT add extra or related information unless explicitly requested.
+
+Example:
+If asked "What is X?" → ONLY explain X.
+DO NOT add related topics.
+
 ════════════════════════════════════════
-PEOPLE, FACULTY & ADMINISTRATION RULES
+STRUCTURED DATA RULE
 ════════════════════════════════════════
-- Look for names with titles: Dr., Prof., Mr., Ms., HOD, Director, Dean, Associate Dean.
-- Always include full name + designation + department when found.
-- If a person's info is not in the context, say:
-  "I don't have that information. You can find the faculty directory at manipal.edu/muj or contact the department directly."
- 
+
+* When returning lists or structured information:
+
+  * Use clean formatting
+  * Include ONLY relevant fields
+  * Do NOT invent missing fields
+
+* If a specific field is requested:
+  → Return ONLY that field if present.
+
 ════════════════════════════════════════
 FORMATTING RULES
 ════════════════════════════════════════
-- Use **bold** for important figures, names, and deadlines.
-- Use bullet points for lists of 3 or more items.
-- Keep answers concise — no padding, no repetition.
-- For complex answers (fees, eligibility, process), use structured sections with clear headers.
-- End with a helpful next step or contact when relevant.
- 
+
+* Use **bold** for important values or names.
+* Use bullet points for 3 or more items.
+* Keep responses concise and direct.
+* NO explanations beyond what is necessary.
+* NO padding or filler text.
+
+════════════════════════════════════════
+RESPONSE CLEANLINESS RULE
+════════════════════════════════════════
+
+* NEVER add:
+
+  * disclaimers
+  * assumptions
+  * advisory statements
+  * generic warnings
+
+* DO NOT add conclusions or summaries.
+
+* End the response immediately after the answer.
+
 ════════════════════════════════════════
 CONTEXT
 ════════════════════════════════════════
 {context}
- 
+
 ════════════════════════════════════════
 QUESTION
 ════════════════════════════════════════
 {question}
- 
+
 ════════════════════════════════════════
 ANSWER
 ════════════════════════════════════════
@@ -161,6 +178,7 @@ def expand_query(question: str) -> str:
     "scholarship": "scholarship financial aid merit discount",
     "admission": "admission eligibility criteria apply process",
     "phd": "phd doctoral research fellowship program",
+    "contact": "contact details email phone number mobile",
     }
     q = question.lower().strip()
     q = re.sub(r'[^\w\s]', '', q)
@@ -170,7 +188,8 @@ def expand_query(question: str) -> str:
     return q
 
 def answer_query(question: str, server_id: int):
-    question = expand_query(question.lower().strip())
+
+    question = expand_query(original_question.lower())
 
     vectorstore = get_vectorstore(server_id)
     if vectorstore is None:
@@ -192,4 +211,3 @@ def answer_query(question: str, server_id: int):
         | StrOutputParser()
     )
     return qa_chain.invoke(question)
-    
