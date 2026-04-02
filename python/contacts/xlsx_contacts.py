@@ -1,25 +1,3 @@
-"""
-xlsx_contacts.py
-────────────────
-Converts each faculty DataFrame row into a plain-text chunk and ingests
-it into the FAISS vector store via the existing ingest pipeline.
-
-Flow:
-  1.  Upload xlsx via /upload-contacts
-  2.  ingest_contacts_to_vectorstore(path, guild_id) is called
-  3.  Every row → one text chunk, e.g.:
-        Name: Prof. (Dr) Neha Chaudhary
-        Designation: Professor & HoD CSE
-        Specialization: Software Testing, AI
-        Mobile: 9785500056
-        Email: chaudhary.neha@jaipur.manipal.edu
-        Cabin: AB2, FB-6, Cabin 364
-        Extension: 768
-  4.  Chunks are passed to the existing split_texts + create_vectorstore
-      pipeline — so they live in the SAME FAISS index as scraped URLs/PDFs.
-  5.  query.py needs NO changes — the LLM finds contact chunks through
-      normal semantic retrieval.
-"""
 import sys
 import os
 import pandas as pd
