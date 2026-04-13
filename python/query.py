@@ -152,8 +152,6 @@ def expand_query(question: str) -> str:
     "mba": "master business administration",
     "bba": "bachelor business administration",
     "muj": "manipal university jaipur",
-    "fee": "fee structure tuition annual charges cost indian rupee inr per year",
-    "fees": "fee structure tuition annual charges cost indian rupee inr per year",
     "hostel": "hostel fees hostel cost accommodation hostel charges hostel fee structure hostel double occupancy hostel price mess fees food charges annual hostel fees",
     "mess": "mess food dining canteen charges fee annual full year 2025 2026",
     "total": "total combined complete fee charges yearly annual tuition hostel mess",
@@ -185,8 +183,8 @@ def answer_query(question: str, server_id: int):
     retriever = vectorstore.as_retriever(
         search_type="mmr",
         search_kwargs={
-            "k": 30,
-            "fetch_k": 90,
+            "k": 15,
+            "fetch_k": 45,
             "lambda_mult": 0.4
         }
     )
