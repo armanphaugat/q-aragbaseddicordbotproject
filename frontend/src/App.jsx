@@ -1,259 +1,193 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
-const DEFAULT_GUILDS = [{ id: "1476466974098985067", name: "Main Server" }];
+// ─── STORAGE HELPERS ───
+const DEFAULT_GUILDS = [{ id: "1476466974098985067", name: "Main Server", createdAt: Date.now(), color: "#6366f1" }];
+const GUILD_COLORS = ["#6366f1","#8b5cf6","#ec4899","#f43f5e","#f97316","#10b981","#0ea5e9","#14b8a6"];
 
 function getStoredGuilds() {
   try { return JSON.parse(localStorage.getItem("nexus_guilds") || "null") || DEFAULT_GUILDS; }
   catch { return DEFAULT_GUILDS; }
 }
-function getStoredActiveId() {
-  return localStorage.getItem("nexus_active_guild") || DEFAULT_GUILDS[0].id;
-}
-function saveGuilds(guilds) { localStorage.setItem("nexus_guilds", JSON.stringify(guilds)); }
+function getStoredActiveId() { return localStorage.getItem("nexus_active_guild") || DEFAULT_GUILDS[0].id; }
+function saveGuilds(g) { localStorage.setItem("nexus_guilds", JSON.stringify(g)); }
 function saveActiveId(id) { localStorage.setItem("nexus_active_guild", id); }
 
 function makeSystemPrompt(guildId) {
-  return `You are the official AI assistant for Manipal University Jaipur (MUJ) — a RAG-powered knowledge base (vector store ID: ${guildId}).
-MUJ is a top-ranked private university in Rajasthan, India, established in 2011. NAAC A+ accredited.
-200+ programs across 30+ schools: Engineering, Management, Law, Design, Sciences, Humanities and more.
-15,000+ students, 500+ faculty. Located at Dehmi Kalan, Jaipur-Ajmer Expressway, Jaipur 303007.
-
-INSTRUCTIONS — follow these strictly:
-1. Answer questions based on uploaded documents AND your knowledge of MUJ.
-2. Be concise, accurate, and helpful. Use markdown tables when showing fees.
-3. Always prefer INR for Indian students.
-4. FEE CALCULATIONS: When asked for a combined/total fee, use ALL known MUJ fee data below to give a complete answer. Never say a fee is "missing" or "unavailable" — always provide the best known figure.
-5. If truly unknown, give a realistic estimate and label it as approximate.
-
-KNOWN MUJ FEE DATA (2025-26):
-- B.Tech CSE Tuition: ₹4,87,000/year
-- Registration Fee: ₹10,000 (one-time)
-- Caution Deposit: ₹15,000 (refundable)
-- Hostel Double Occupancy: ₹1,74,050/year (Residential Dwelling ₹1,59,403 + Housekeeping ₹14,647)
-- Hostel Security Deposit: ₹24,250 (refundable)
-- Mess Fee: ₹75,920/year
-- Total per year (tuition + hostel + mess): ₹7,36,970
-- Total 4-year cost (excl. one-time fees): ₹29,47,880`;
+  return `You are an AI assistant for the knowledge base with vector store ID: ${guildId}.
+Answer questions based on uploaded documents and your available knowledge.
+Be concise, accurate, and helpful. Use markdown formatting when appropriate.
+If information is unavailable, provide the best answer you can and indicate uncertainty.`;
 }
 
+// ─── GLOBAL STYLES ───
 const GLOBAL_CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@400;500&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap');
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html, body, #root { height: 100%; }
-  body { font-family: 'DM Sans', sans-serif; background: #1a0a04; -webkit-font-smoothing: antialiased; overflow: hidden; }
+  body {
+    font-family: 'IBM Plex Sans', sans-serif;
+    background: #0a0a0f;
+    color: #e2e8f0;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
 
   :root {
-    --rust: #B84A1A;
-    --rust-light: #D05A22;
-    --rust-pale: rgba(245,232,224,0.18);
-    --rust-faint: rgba(251,242,237,0.12);
-    --gold: #C8913A;
-    --cream: rgba(251,247,244,0.08);
-    --parchment: rgba(243,235,227,0.10);
-    --ink: #fff;
-    --ink-60: rgba(255,255,255,0.7);
-    --ink-35: rgba(255,255,255,0.4);
-    --ink-15: rgba(255,255,255,0.15);
-    --ink-08: rgba(255,255,255,0.08);
-    --white: rgba(255,255,255,0.08);
-    --shadow-sm: 0 2px 8px rgba(0,0,0,0.25);
-    --shadow-md: 0 8px 32px rgba(0,0,0,0.35);
-    --shadow-lg: 0 20px 60px rgba(0,0,0,0.45);
-    --shadow-rust: 0 8px 32px rgba(184,74,26,0.4);
+    --bg-base: #0a0a0f;
+    --bg-surface: #111118;
+    --bg-elevated: #1a1a24;
+    --bg-overlay: #22222e;
+    --border: rgba(255,255,255,0.07);
+    --border-active: rgba(255,255,255,0.15);
+    --text-primary: #f0f0f8;
+    --text-secondary: rgba(240,240,248,0.55);
+    --text-muted: rgba(240,240,248,0.3);
+    --accent: #6366f1;
+    --accent-glow: rgba(99,102,241,0.25);
+    --accent-hover: #818cf8;
+    --success: #10b981;
+    --success-bg: rgba(16,185,129,0.1);
+    --danger: #f43f5e;
+    --danger-bg: rgba(244,63,94,0.1);
+    --warning: #f59e0b;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+    --radius-xl: 20px;
+    --sidebar-w: 260px;
   }
 
-  @keyframes fadeUp    { from { opacity:0; transform:translateY(28px); } to { opacity:1; transform:translateY(0); } }
-  @keyframes fadeIn    { from { opacity:0; } to { opacity:1; } }
-  @keyframes slideDown { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
-  @keyframes msgIn     { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
-  @keyframes spin      { to { transform:rotate(360deg); } }
-  @keyframes blink     { 0%,100% { opacity:1; } 50% { opacity:0.2; } }
-  @keyframes pulse-ring { 0%,100% { transform:scale(1); opacity:0.6; } 50% { transform:scale(1.12); opacity:0; } }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+  @keyframes fadeIn { from { opacity:0; } to { opacity:1; } }
+  @keyframes slideRight { from { opacity:0; transform:translateX(-10px); } to { opacity:1; transform:translateX(0); } }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.2; } }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+  @keyframes glow { 0%,100% { box-shadow: 0 0 8px var(--accent-glow); } 50% { box-shadow: 0 0 20px var(--accent-glow), 0 0 40px var(--accent-glow); } }
 
-  .anim-fadeup  { animation: fadeUp  .8s cubic-bezier(0.16,1,0.3,1) both; }
-  .anim-fadein  { animation: fadeIn  .6s ease both; }
-  .anim-slide   { animation: slideDown .3s cubic-bezier(0.16,1,0.3,1) both; }
-  .anim-msg     { animation: msgIn   .3s cubic-bezier(0.16,1,0.3,1) both; }
-  .delay-1 { animation-delay: 0.1s; }
-  .delay-2 { animation-delay: 0.2s; }
-  .delay-3 { animation-delay: 0.35s; }
-  .delay-4 { animation-delay: 0.5s; }
-  .delay-5 { animation-delay: 0.65s; }
+  .anim-up   { animation: fadeUp .4s cubic-bezier(0.16,1,0.3,1) both; }
+  .anim-in   { animation: fadeIn .3s ease both; }
+  .anim-slide { animation: slideRight .3s cubic-bezier(0.16,1,0.3,1) both; }
+  .d1 { animation-delay: 0.05s; }
+  .d2 { animation-delay: 0.1s; }
+  .d3 { animation-delay: 0.15s; }
+  .d4 { animation-delay: 0.2s; }
 
-  .nav-link {
+  /* Scrollbars */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 99px; }
+
+  /* Inputs */
+  .field {
+    width: 100%;
+    background: var(--bg-base);
+    border: 1.5px solid var(--border);
+    color: var(--text-primary);
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
     font-size: 13px;
-    font-weight: 500;
-    color: rgba(255,255,255,0.65);
-    text-decoration: none;
-    padding: 6px 14px;
-    border-radius: 8px;
-    transition: all 0.15s;
-    cursor: pointer;
-    background: none;
-    border: none;
-    font-family: 'DM Sans', sans-serif;
-  }
-  .nav-link:hover { color: #fff; background: rgba(255,255,255,0.1); }
-  .nav-link.active { color: #fff; background: rgba(184,74,26,0.45); font-weight: 600; }
-
-  .card {
-    background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 20px;
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    transition: background 0.2s, transform 0.2s;
-  }
-  .card:hover { background: rgba(255,255,255,0.10); transform: translateY(-2px); }
-
-  .btn-primary {
-    background: var(--rust);
-    color: #fff;
-    border: none;
-    border-radius: 12px;
-    padding: 12px 24px;
-    font-size: 14px;
-    font-weight: 600;
-    cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
-    transition: all 0.2s;
-    box-shadow: var(--shadow-rust);
-    letter-spacing: -0.01em;
-  }
-  .btn-primary:hover:not(:disabled) { background: var(--rust-light); transform: translateY(-1px); }
-  .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
-
-  .btn-secondary {
-    background: rgba(255,255,255,0.08);
-    color: rgba(255,255,255,0.8);
-    border: 1.5px solid rgba(255,255,255,0.2);
-    border-radius: 12px;
-    padding: 11px 22px;
-    font-size: 13.5px;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
-    transition: all 0.2s;
-    backdrop-filter: blur(8px);
-  }
-  .btn-secondary:hover { background: rgba(255,255,255,0.14); }
-
-  .chip-btn {
-    padding: 7px 16px;
-    border-radius: 100px;
-    border: 1.5px solid rgba(255,255,255,0.2);
-    background: rgba(255,255,255,0.08);
-    color: rgba(255,255,255,0.7);
-    font-size: 12.5px;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
-    transition: all 0.15s;
-    white-space: nowrap;
-    backdrop-filter: blur(6px);
-  }
-  .chip-btn:hover { border-color: var(--rust); color: #fff; background: rgba(184,74,26,0.3); }
-
-  .sug-chip {
-    padding: 8px 16px;
-    border-radius: 100px;
-    border: 1.5px solid rgba(255,255,255,0.12);
-    background: rgba(255,255,255,0.06);
-    color: rgba(255,255,255,0.65);
-    font-size: 12px;
-    font-weight: 500;
-    cursor: pointer;
-    font-family: 'DM Sans', sans-serif;
-    transition: all 0.15s;
-    backdrop-filter: blur(6px);
-  }
-  .sug-chip:hover { border-color: var(--rust); color: #fff; background: rgba(184,74,26,0.25); }
-
-  .spinner { width:14px;height:14px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite; }
-  .spinner-rust { width:14px;height:14px;border:2px solid rgba(184,74,26,0.3);border-top-color:var(--rust);border-radius:50%;animation:spin .7s linear infinite; }
-
-  .section-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 12px;
-    background: rgba(184,74,26,0.25);
-    border: 1px solid rgba(184,74,26,0.35);
-    border-radius: 100px;
-    font-size: 11px;
-    font-weight: 600;
-    color: #ffb899;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    margin-bottom: 12px;
-  }
-
-  .stat-card {
-    background: rgba(255,255,255,0.07);
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 16px;
-    padding: 20px;
-    text-align: center;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-  }
-
-  .upload-zone {
-    border: 2px dashed rgba(255,255,255,0.2);
-    border-radius: 16px;
-    padding: 36px 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .upload-zone:hover { border-color: var(--rust); background: rgba(184,74,26,0.12); }
-
-  .modal-bg { animation: fadeIn 0.2s both; }
-  .modal-box { animation: fadeUp 0.25s cubic-bezier(0.16,1,0.3,1) both; }
-
-  code { font-family: 'DM Mono', monospace !important; }
-
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 16px;
-  }
-  @media (max-width: 700px) {
-    .stats-grid { grid-template-columns: repeat(2, 1fr); }
-  }
-
-  .chat-scroll::-webkit-scrollbar { width: 4px; }
-  .chat-scroll::-webkit-scrollbar-track { background: transparent; }
-  .chat-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 99px; }
-
-  .page-scroll::-webkit-scrollbar { width: 4px; }
-  .page-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 99px; }
-
-  .muj-input {
-    background: rgba(255,255,255,0.07) !important;
-    border: 1.5px solid rgba(255,255,255,0.15) !important;
-    color: #fff !important;
-    backdrop-filter: blur(8px);
-  }
-  .muj-input::placeholder { color: rgba(255,255,255,0.35) !important; }
-  .muj-input:focus {
+    font-family: 'IBM Plex Sans', sans-serif;
     outline: none;
-    border-color: var(--rust) !important;
-    box-shadow: 0 0 0 3px rgba(184,74,26,0.2) !important;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .field::placeholder { color: var(--text-muted); }
+  .field:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+  .field-mono { font-family: 'IBM Plex Mono', monospace !important; font-size: 12px !important; }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; gap: 7px; border: none; cursor: pointer; font-family: 'IBM Plex Sans', sans-serif; font-weight: 500; border-radius: var(--radius-md); transition: all .15s; white-space: nowrap; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
+  .btn-primary { background: var(--accent); color: #fff; padding: 9px 18px; font-size: 13px; box-shadow: 0 4px 16px var(--accent-glow); }
+  .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 8px 24px var(--accent-glow); }
+  .btn-ghost { background: transparent; color: var(--text-secondary); padding: 8px 14px; font-size: 13px; border: 1.5px solid var(--border); }
+  .btn-ghost:hover { background: var(--bg-elevated); color: var(--text-primary); border-color: var(--border-active); }
+  .btn-danger { background: var(--danger-bg); color: var(--danger); padding: 7px 14px; font-size: 12.5px; border: 1.5px solid rgba(244,63,94,0.2); }
+  .btn-danger:hover { background: rgba(244,63,94,0.2); }
+  .btn-success { background: var(--success-bg); color: var(--success); padding: 9px 18px; font-size: 13px; border: 1.5px solid rgba(16,185,129,0.2); }
+  .btn-success:hover { background: rgba(16,185,129,0.2); }
+  .btn-icon { background: var(--bg-elevated); color: var(--text-secondary); padding: 8px; border: 1.5px solid var(--border); border-radius: var(--radius-sm); }
+  .btn-icon:hover { color: var(--text-primary); border-color: var(--border-active); }
+
+  /* Cards */
+  .panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
   }
 
-  .fab-ring::after {
-    content: '';
-    position: absolute; inset: -5px;
-    border-radius: 50%;
-    border: 2px solid rgba(184,74,26,0.4);
-    animation: pulse-ring 2.2s ease infinite;
-    pointer-events: none;
+  /* Tags */
+  .tag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 100px; font-size: 11px; font-weight: 600; letter-spacing: .03em; }
+  .tag-accent { background: rgba(99,102,241,0.15); color: #818cf8; border: 1px solid rgba(99,102,241,0.2); }
+  .tag-success { background: var(--success-bg); color: var(--success); border: 1px solid rgba(16,185,129,0.2); }
+  .tag-danger { background: var(--danger-bg); color: var(--danger); border: 1px solid rgba(244,63,94,0.2); }
+  .tag-warning { background: rgba(245,158,11,0.1); color: var(--warning); border: 1px solid rgba(245,158,11,0.2); }
+
+  /* Nav items */
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px; border-radius: var(--radius-md);
+    font-size: 13px; font-weight: 500;
+    color: var(--text-secondary);
+    cursor: pointer; transition: all .12s;
+    border: none; background: none;
+    font-family: 'IBM Plex Sans', sans-serif;
+    width: 100%; text-align: left;
   }
+  .nav-item:hover { background: var(--bg-elevated); color: var(--text-primary); }
+  .nav-item.active { background: rgba(99,102,241,0.15); color: #818cf8; }
+  .nav-item .nav-icon { width: 32px; height: 32px; border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 14px; }
+  .nav-item.active .nav-icon { background: rgba(99,102,241,0.2); }
+  .nav-item:not(.active) .nav-icon { background: var(--bg-elevated); }
+
+  /* Upload zone */
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-md);
+    padding: 28px 20px;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    cursor: pointer; transition: all .15s; text-align: center;
+  }
+  .drop-zone:hover { border-color: var(--accent); background: var(--accent-glow); }
+
+  /* Status bar */
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  .status-online { background: var(--success); box-shadow: 0 0 8px rgba(16,185,129,0.5); animation: pulse 2s ease infinite; }
+  .status-offline { background: #4b5563; }
+
+  .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.15); border-top-color: currentColor; border-radius: 50%; animation: spin .65s linear infinite; }
+
+  /* Table */
+  .data-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .data-table th { padding: 9px 14px; text-align: left; color: var(--text-muted); font-weight: 600; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+  .data-table td { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text-secondary); vertical-align: middle; }
+  .data-table tr:hover td { background: var(--bg-elevated); color: var(--text-primary); }
+
+  /* Code block */
+  .code-block {
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 3px 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    color: #a5b4fc;
+  }
+
+  /* Checkbox */
+  .check-row { display: flex; align-items: center; gap: 10px; padding: 9px 14px; cursor: pointer; border-bottom: 1px solid rgba(255,255,255,0.04); transition: background .1s; }
+  .check-row:hover { background: var(--bg-elevated); }
+  .check-row.selected { background: rgba(99,102,241,0.08); }
+  .custom-check { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--border); flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all .12s; }
+  .custom-check.checked { background: var(--accent); border-color: var(--accent); }
+
+  /* Modal */
+  .modal-bg { animation: fadeIn .2s both; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); }
+  .modal-box { animation: fadeUp .25s cubic-bezier(0.16,1,0.3,1) both; }
+
+  /* Divider */
+  .divider { height: 1px; background: var(--border); margin: 20px 0; }
 `;
 
 function GlobalStyles() {
@@ -266,187 +200,193 @@ function GlobalStyles() {
   return null;
 }
 
-// ─── MARKDOWN ───
+// ─── ICONS ───
+const Icon = {
+  Home: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
+  Upload: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
+  Globe: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>,
+  Chat: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
+  Database: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>,
+  Settings: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M4.93 19.07l1.41-1.41M19.07 19.07l-1.41-1.41M21 12h-1M4 12H3M12 21v-1M12 4V3"/></svg>,
+  Plus: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+  Trash: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>,
+  Check: () => <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+  Send: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>,
+  X: () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+  ChevronDown: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>,
+  Search: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+  ExternalLink: () => <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>,
+  Folder: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>,
+  Activity: () => <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>,
+};
+
+// ─── MARKDOWN RENDERER ───
 function inlineFormat(text) {
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\*[^*]+\*)/g);
   return parts.map((p, i) => {
     if (p.startsWith("**") && p.endsWith("**"))
-      return <strong key={i} style={{ color: "#fff", fontWeight: 600 }}>{p.slice(2, -2)}</strong>;
+      return <strong key={i} style={{ color: "var(--text-primary)", fontWeight: 600 }}>{p.slice(2,-2)}</strong>;
     if (p.startsWith("`") && p.endsWith("`"))
-      return <code key={i} style={{ background: "rgba(184,74,26,0.25)", color: "#ffb899", padding: "1px 6px", borderRadius: 5, fontSize: "0.88em" }}>{p.slice(1, -1)}</code>;
+      return <code key={i} style={{ background: "rgba(99,102,241,0.2)", color: "#a5b4fc", padding: "1px 6px", borderRadius: 4, fontSize: "0.87em", fontFamily: "'IBM Plex Mono', monospace" }}>{p.slice(1,-1)}</code>;
     if (p.startsWith("*") && p.endsWith("*"))
-      return <em key={i}>{p.slice(1, -1)}</em>;
+      return <em key={i}>{p.slice(1,-1)}</em>;
     return p;
   });
 }
 
-function MarkdownLight({ text }) {
+function MsgContent({ text }) {
   const lines = text.split("\n");
   const els = [];
-  let i = 0;
-  while (i < lines.length) {
-    const line = lines[i];
+  lines.forEach((line, i) => {
     if (line.startsWith("- ") || line.startsWith("* ")) {
       els.push(<div key={i} style={{ display:"flex", gap:8, marginBottom:3 }}>
-        <span style={{ color:"#ffb899", flexShrink:0, marginTop:2 }}>•</span>
+        <span style={{ color:"#818cf8", flexShrink:0 }}>›</span>
         <span>{inlineFormat(line.slice(2))}</span>
       </div>);
     } else if (/^\d+\.\s/.test(line)) {
       const num = line.match(/^(\d+)\./)[1];
       els.push(<div key={i} style={{ display:"flex", gap:8, marginBottom:3 }}>
-        <span style={{ color:"#ffb899", minWidth:16, flexShrink:0 }}>{num}.</span>
+        <span style={{ color:"#818cf8", minWidth:16, flexShrink:0, fontFamily:"'IBM Plex Mono', monospace", fontSize:11 }}>{num}.</span>
         <span>{inlineFormat(line.replace(/^\d+\.\s/, ""))}</span>
       </div>);
     } else if (line.startsWith("### ")) {
-      els.push(<div key={i} style={{ fontSize:13, fontWeight:600, color:"#fff", marginTop:10, marginBottom:4 }}>{line.slice(4)}</div>);
+      els.push(<div key={i} style={{ fontSize:12.5, fontWeight:600, color:"var(--text-primary)", marginTop:8, marginBottom:3, letterSpacing:"0.02em" }}>{line.slice(4)}</div>);
     } else if (line.trim() === "") {
-      els.push(<div key={i} style={{ height:6 }} />);
+      els.push(<div key={i} style={{ height:5 }} />);
     } else {
       els.push(<p key={i} style={{ lineHeight:1.65, marginBottom:2 }}>{inlineFormat(line)}</p>);
     }
-    i++;
-  }
-  return <div style={{ fontSize:13.5, color:"rgba(255,255,255,0.88)", lineHeight:1.65 }}>{els}</div>;
+  });
+  return <div style={{ fontSize:13, color:"var(--text-secondary)", lineHeight:1.65 }}>{els}</div>;
 }
 
 function TypingDots() {
   return (
-    <div style={{ display:"flex", gap:5, alignItems:"center", padding:"4px 0" }}>
+    <div style={{ display:"flex", gap:4, alignItems:"center", padding:"3px 0" }}>
       {[0,1,2].map(i => (
-        <div key={i} style={{ width:6, height:6, borderRadius:"50%", background:"rgba(255,184,153,0.4)", animation:`blink 1.2s ease ${i*0.2}s infinite` }} />
+        <div key={i} style={{ width:5, height:5, borderRadius:"50%", background:"rgba(129,140,248,0.4)", animation:`blink 1.2s ease ${i*0.2}s infinite` }} />
       ))}
     </div>
   );
 }
 
-const MUJ_LOGO = "src/assets/Manipal_BG.png";
-const MUJ_BG   = "src/assets/Manipal_BG.png";
-
-function MujAvatar({ size = 30, radius = 10 }) {
-  return (
-    <div style={{ width:size, height:size, borderRadius:radius, flexShrink:0, background:"rgba(255,255,255,0.12)", display:"flex", alignItems:"center", justifyContent:"center", boxShadow:"0 2px 8px rgba(184,74,26,0.3)", border:"1px solid rgba(255,255,255,0.15)", backdropFilter:"blur(8px)" }}>
-      <img src={MUJ_LOGO} alt="MUJ" style={{ width:size*0.78, height:size*0.78, objectFit:"contain" }} onError={e => { e.target.style.display="none"; }} />
-    </div>
-  );
-}
-
-// ─── FLOATING CHAT PANEL ───
+// ─── CHAT PANEL ───
 const CHAT_SUGGESTIONS = [
-  { label: "Admissions", q: "Tell me about the MUJ admission process" },
-  { label: "Programs", q: "What programs are offered at MUJ?" },
-  { label: "Campus Life", q: "Tell me about campus life at MUJ" },
-  { label: "Fee Details", q: "What are the fee details for MUJ?" },
+  "What documents are in the knowledge base?",
+  "Summarize what you know",
+  "What topics can you help with?",
+  "How do I add more documents?",
 ];
 
-function FloatingChatPanel({ isOpen, guildId }) {
-  const SYSTEM_PROMPT = makeSystemPrompt(guildId);
+function ChatPanel({ isOpen, guildId, guildName }) {
+  const SYSTEM = makeSystemPrompt(guildId);
   const [messages, setMessages] = useState([]);
   const [history, setHistory] = useState([]);
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [showSuggestions, setShowSugg] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [showSugg, setShowSugg] = useState(true);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages, isLoading]);
-  useEffect(() => { if (isOpen) setTimeout(() => inputRef.current?.focus(), 300); }, [isOpen]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages, loading]);
+  useEffect(() => { if (isOpen) setTimeout(() => inputRef.current?.focus(), 250); }, [isOpen]);
 
   const autoResize = () => {
     const el = inputRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 100) + "px";
+    el.style.height = Math.min(el.scrollHeight, 96) + "px";
   };
 
   const callAPI = useCallback(async (question, hist) => {
-    setIsLoading(true);
+    setLoading(true);
     try {
       let text = "";
       try {
-        const ragRes = await fetch("http://localhost:8000/query", {
+        const r = await fetch("http://localhost:8000/query", {
           method:"POST", headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({ question, server: guildId }),
+          body: JSON.stringify({ question, server: guildId }),
         });
-        if (ragRes.ok) { const d = await ragRes.json(); if (d.answer) text = d.answer; }
+        if (r.ok) { const d = await r.json(); if (d.answer) text = d.answer; }
       } catch (_) {}
 
       if (!text) {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
+        const r = await fetch("https://api.anthropic.com/v1/messages", {
           method:"POST", headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000, system:SYSTEM_PROMPT, messages:hist }),
+          body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000, system:SYSTEM, messages:hist }),
         });
-        if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e?.error?.message || `HTTP ${res.status}`); }
-        const data = await res.json();
-        text = data.content.filter(b => b.type==="text").map(b => b.text).join("\n").trim();
+        if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e?.error?.message || `HTTP ${r.status}`); }
+        const d = await r.json();
+        text = d.content.filter(b => b.type==="text").map(b => b.text).join("\n").trim();
         if (!text) throw new Error("No response received.");
       }
       setMessages(p => [...p, { role:"assistant", content:text, id:Date.now() }]);
       setHistory(p => [...p, { role:"assistant", content:text }]);
     } catch (e) {
       setMessages(p => [...p, { role:"assistant", content:"Error: "+e.message, id:Date.now(), error:true }]);
-    } finally { setIsLoading(false); }
-  }, [guildId, SYSTEM_PROMPT]);
+    } finally { setLoading(false); }
+  }, [guildId, SYSTEM]);
 
-  const sendMessage = useCallback((text) => {
+  const send = useCallback((text) => {
     const q = (text || input).trim();
-    if (!q || isLoading) return;
+    if (!q || loading) return;
     setShowSugg(false);
     setInput("");
     if (inputRef.current) inputRef.current.style.height = "auto";
-    const newHist = [...history, { role:"user", content:q }];
+    const hist = [...history, { role:"user", content:q }];
     setMessages(p => [...p, { role:"user", content:q, id:Date.now() }]);
-    setHistory(newHist);
-    callAPI(q, newHist);
-  }, [input, isLoading, history, callAPI]);
+    setHistory(hist);
+    callAPI(q, hist);
+  }, [input, loading, history, callAPI]);
 
   return (
     <div style={{
-      position:"fixed", bottom:104, right:32,
-      width:400, height:560,
-      background:"rgba(20,8,2,0.75)",
-      backdropFilter:"blur(24px)",
-      WebkitBackdropFilter:"blur(24px)",
-      borderRadius:24,
-      border:"1px solid rgba(255,255,255,0.12)",
-      boxShadow:"0 32px 80px rgba(0,0,0,0.5), 0 8px 24px rgba(184,74,26,0.15)",
-      zIndex:200, display:"flex", flexDirection:"column", overflow:"hidden",
+      position:"fixed", bottom:88, right:28,
+      width:380, height:520,
+      background:"var(--bg-surface)",
+      border:"1px solid var(--border-active)",
+      borderRadius:"var(--radius-xl)",
+      boxShadow:"0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)",
+      zIndex:500, display:"flex", flexDirection:"column", overflow:"hidden",
+      transition:"transform .3s cubic-bezier(0.16,1,0.3,1), opacity .2s ease",
+      transform: isOpen ? "scale(1) translateY(0)" : "scale(0.92) translateY(20px)",
+      opacity: isOpen ? 1 : 0, pointerEvents: isOpen ? "all" : "none",
       transformOrigin:"bottom right",
-      transition:"transform .35s cubic-bezier(0.16,1,0.3,1), opacity .25s ease",
-      transform: isOpen ? "scale(1) translateY(0)" : "scale(0.88) translateY(24px)",
-      opacity: isOpen ? 1 : 0,
-      pointerEvents: isOpen ? "all" : "none",
     }}>
       {/* Header */}
-      <div style={{ padding:"18px 20px", background:"linear-gradient(135deg, rgba(184,74,26,0.8) 0%, rgba(208,90,34,0.8) 100%)", display:"flex", alignItems:"center", gap:12, flexShrink:0, position:"relative", overflow:"hidden", backdropFilter:"blur(8px)" }}>
-        <div style={{ position:"absolute", right:-20, top:-20, width:120, height:120, borderRadius:"50%", background:"rgba(255,255,255,0.06)" }} />
-        <div style={{ position:"absolute", right:10, bottom:-30, width:80, height:80, borderRadius:"50%", background:"rgba(255,255,255,0.04)" }} />
-        <div style={{ width:38, height:38, borderRadius:12, overflow:"hidden", background:"rgba(255,255,255,0.15)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, boxShadow:"0 2px 10px rgba(0,0,0,0.3)", position:"relative", backdropFilter:"blur(8px)" }}>
-          <img src={MUJ_LOGO} alt="MUJ" style={{ width:30, height:30, objectFit:"contain" }} onError={e => { e.target.style.display="none"; }} />
+      <div style={{ padding:"14px 16px", borderBottom:"1px solid var(--border)", display:"flex", alignItems:"center", gap:10, background:"var(--bg-elevated)", flexShrink:0 }}>
+        <div style={{ width:32, height:32, borderRadius:"var(--radius-sm)", background:"rgba(99,102,241,0.2)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+          <Icon.Chat />
         </div>
-        <div style={{ position:"relative" }}>
-          <div style={{ fontSize:14.5, fontWeight:600, color:"#fff", letterSpacing:"-0.01em", fontFamily:"'Playfair Display', serif" }}>MUJ Assistant</div>
-          <div style={{ fontSize:11, color:"rgba(255,255,255,0.72)", marginTop:1 }}>Manipal University Jaipur</div>
+        <div style={{ flex:1, minWidth:0 }}>
+          <div style={{ fontSize:13, fontWeight:600, color:"var(--text-primary)", fontFamily:"'IBM Plex Mono', monospace" }}>{guildName}</div>
+          <div style={{ fontSize:11, color:"var(--text-muted)", marginTop:1 }}>Knowledge Base Assistant</div>
         </div>
-        <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6, position:"relative" }}>
-          <div style={{ width:7, height:7, borderRadius:"50%", background:"#a7f3d0", boxShadow:"0 0 8px #6ee7b7" }} />
-          <span style={{ fontSize:11.5, color:"rgba(255,255,255,0.8)", fontWeight:500 }}>Online</span>
+        <div style={{ display:"flex", alignItems:"center", gap:5 }}>
+          <span className="status-dot status-online" />
+          <span style={{ fontSize:11, color:"var(--success)", fontWeight:500 }}>Online</span>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="chat-scroll" style={{ flex:1, overflowY:"auto", padding:"20px 16px 8px", display:"flex", flexDirection:"column", gap:14, background:"transparent" }}>
-        <div style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
-          <MujAvatar />
+      <div style={{ flex:1, overflowY:"auto", padding:"16px", display:"flex", flexDirection:"column", gap:12 }}>
+        {/* Welcome */}
+        <div style={{ display:"flex", gap:8, alignItems:"flex-start" }}>
+          <div style={{ width:26, height:26, borderRadius:"var(--radius-sm)", background:"rgba(99,102,241,0.2)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:2 }}>
+            <Icon.Database />
+          </div>
           <div>
-            <div style={{ background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:"4px 16px 16px 16px", padding:"12px 16px", fontSize:13.5, color:"rgba(255,255,255,0.9)", lineHeight:1.65, maxWidth:280, backdropFilter:"blur(8px)" }}>
-              👋 <strong style={{ fontFamily:"'Playfair Display', serif", fontWeight:600, color:"#fff" }}>Namaste!</strong> I'm your MUJ AI assistant. Ask me anything about admissions, programs, campus life, fees, and more.
-              <br /><br />What would you like to know?
+            <div style={{ background:"var(--bg-elevated)", border:"1px solid var(--border)", borderRadius:"4px 12px 12px 12px", padding:"10px 14px", fontSize:13, color:"var(--text-secondary)", lineHeight:1.6, maxWidth:290 }}>
+              Hello! I'm the AI assistant for <strong style={{ color:"var(--text-primary)", fontFamily:"'IBM Plex Mono', monospace", fontSize:12 }}>{guildName}</strong>. Ask me anything about this knowledge base.
             </div>
-            {showSuggestions && (
-              <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:8 }}>
-                {CHAT_SUGGESTIONS.map((s, i) => (
-                  <button key={i} className="chip-btn" onClick={() => sendMessage(s.q)} style={{ fontSize:11.5, padding:"5px 12px" }}>
-                    {s.label}
+            {showSugg && (
+              <div style={{ display:"flex", flexWrap:"wrap", gap:5, marginTop:8 }}>
+                {CHAT_SUGGESTIONS.map((s,i) => (
+                  <button key={i} onClick={() => send(s)}
+                    style={{ padding:"5px 10px", borderRadius:100, border:"1px solid var(--border)", background:"var(--bg-elevated)", color:"var(--text-muted)", fontSize:11, cursor:"pointer", fontFamily:"'IBM Plex Sans', sans-serif", transition:"all .12s" }}
+                    onMouseEnter={e => { e.target.style.borderColor="var(--accent)"; e.target.style.color="var(--text-primary)"; }}
+                    onMouseLeave={e => { e.target.style.borderColor="var(--border)"; e.target.style.color="var(--text-muted)"; }}>
+                    {s}
                   </button>
                 ))}
               </div>
@@ -455,20 +395,22 @@ function FloatingChatPanel({ isOpen, guildId }) {
         </div>
 
         {messages.map(msg => (
-          <div key={msg.id} className="anim-msg">
+          <div key={msg.id} className="anim-up">
             {msg.role === "user" ? (
               <div style={{ display:"flex", justifyContent:"flex-end" }}>
-                <div style={{ background:"linear-gradient(135deg,rgba(184,74,26,0.85),rgba(208,90,34,0.85))", backdropFilter:"blur(8px)", borderRadius:"16px 4px 16px 16px", padding:"11px 16px", fontSize:13.5, color:"#fff", lineHeight:1.65, maxWidth:280, boxShadow:"0 4px 16px rgba(184,74,26,0.3)" }}>
+                <div style={{ background:"var(--accent)", borderRadius:"12px 4px 12px 12px", padding:"9px 14px", fontSize:13, color:"#fff", maxWidth:270, lineHeight:1.55 }}>
                   {msg.content}
                 </div>
               </div>
             ) : (
-              <div style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
-                <MujAvatar />
-                <div style={{ background:msg.error?"rgba(185,28,28,0.2)":"rgba(255,255,255,0.1)", border:`1px solid ${msg.error?"rgba(185,28,28,0.3)":"rgba(255,255,255,0.12)"}`, borderRadius:"4px 16px 16px 16px", padding:"11px 16px", maxWidth:280, backdropFilter:"blur(8px)" }}>
+              <div style={{ display:"flex", gap:8, alignItems:"flex-start" }}>
+                <div style={{ width:26, height:26, borderRadius:"var(--radius-sm)", background:"rgba(99,102,241,0.2)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:2 }}>
+                  <Icon.Database />
+                </div>
+                <div style={{ background:msg.error?"var(--danger-bg)":"var(--bg-elevated)", border:`1px solid ${msg.error?"rgba(244,63,94,0.2)":"var(--border)"}`, borderRadius:"4px 12px 12px 12px", padding:"10px 14px", maxWidth:290 }}>
                   {msg.error
-                    ? <span style={{ fontSize:13, color:"#fca5a5" }}>{msg.content}</span>
-                    : <MarkdownLight text={msg.content} />
+                    ? <span style={{ fontSize:12.5, color:"var(--danger)" }}>{msg.content}</span>
+                    : <MsgContent text={msg.content} />
                   }
                 </div>
               </div>
@@ -476,10 +418,12 @@ function FloatingChatPanel({ isOpen, guildId }) {
           </div>
         ))}
 
-        {isLoading && (
-          <div style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
-            <MujAvatar />
-            <div style={{ background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:"4px 16px 16px 16px", padding:"14px 18px", backdropFilter:"blur(8px)" }}>
+        {loading && (
+          <div style={{ display:"flex", gap:8, alignItems:"flex-start" }}>
+            <div style={{ width:26, height:26, borderRadius:"var(--radius-sm)", background:"rgba(99,102,241,0.2)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, marginTop:2 }}>
+              <Icon.Database />
+            </div>
+            <div style={{ background:"var(--bg-elevated)", border:"1px solid var(--border)", borderRadius:"4px 12px 12px 12px", padding:"12px 14px" }}>
               <TypingDots />
             </div>
           </div>
@@ -488,22 +432,20 @@ function FloatingChatPanel({ isOpen, guildId }) {
       </div>
 
       {/* Input */}
-      <div style={{ padding:"12px 14px 16px", flexShrink:0, borderTop:"1px solid rgba(255,255,255,0.08)", background:"rgba(0,0,0,0.2)" }}>
-        <div style={{ display:"flex", alignItems:"flex-end", gap:8, background:"rgba(255,255,255,0.07)", border:"1.5px solid rgba(255,255,255,0.12)", borderRadius:16, padding:"8px 8px 8px 14px", backdropFilter:"blur(8px)", transition:"border-color .2s" }}
-          onFocusCapture={e => e.currentTarget.style.borderColor="var(--rust)"}
-          onBlurCapture={e => e.currentTarget.style.borderColor="rgba(255,255,255,0.12)"}>
+      <div style={{ padding:"10px 12px 14px", borderTop:"1px solid var(--border)", background:"var(--bg-elevated)", flexShrink:0 }}>
+        <div style={{ display:"flex", alignItems:"flex-end", gap:8, background:"var(--bg-base)", border:"1.5px solid var(--border)", borderRadius:"var(--radius-md)", padding:"7px 7px 7px 12px", transition:"border-color .15s" }}
+          onFocusCapture={e => e.currentTarget.style.borderColor="var(--accent)"}
+          onBlurCapture={e => e.currentTarget.style.borderColor="var(--border)"}>
           <textarea ref={inputRef} value={input}
             onChange={e => { setInput(e.target.value); autoResize(); }}
-            onKeyDown={e => { if (e.key==="Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-            placeholder="Ask about MUJ…" rows={1} disabled={isLoading}
-            style={{ flex:1, background:"transparent", border:"none", outline:"none", color:"#fff", fontSize:13.5, lineHeight:1.5, resize:"none", fontFamily:"'DM Sans', sans-serif", minHeight:22, maxHeight:100, overflowY:"auto" }}
+            onKeyDown={e => { if (e.key==="Enter" && !e.shiftKey) { e.preventDefault(); send(); } }}
+            placeholder="Ask a question…" rows={1} disabled={loading}
+            style={{ flex:1, background:"transparent", border:"none", outline:"none", color:"var(--text-primary)", fontSize:13, lineHeight:1.5, resize:"none", fontFamily:"'IBM Plex Sans', sans-serif", minHeight:20, maxHeight:96 }}
           />
-          <button onClick={() => sendMessage()} disabled={isLoading || !input.trim()}
-            style={{ width:34, height:34, borderRadius:10, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center", background: input.trim() && !isLoading ? "var(--rust)" : "rgba(255,255,255,0.08)", border:"none", cursor: input.trim() && !isLoading ? "pointer" : "not-allowed", transition:"all .15s", boxShadow: input.trim() && !isLoading ? "0 4px 12px rgba(184,74,26,0.4)" : "none" }}>
-            {isLoading
-              ? <div className="spinner" />
-              : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={input.trim() ? "#fff" : "rgba(255,255,255,0.25)"} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-            }
+          <button onClick={() => send()} disabled={loading || !input.trim()}
+            className="btn-icon"
+            style={{ width:30, height:30, borderRadius:"var(--radius-sm)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, background: input.trim() && !loading ? "var(--accent)" : undefined, color: input.trim() && !loading ? "#fff" : undefined, borderColor: input.trim() && !loading ? "var(--accent)" : undefined }}>
+            {loading ? <div className="spinner" style={{ color:"var(--accent)" }} /> : <Icon.Send />}
           </button>
         </div>
       </div>
@@ -511,72 +453,243 @@ function FloatingChatPanel({ isOpen, guildId }) {
   );
 }
 
-// ─── GUILD MODAL ───
-function GuildModal({ guilds, activeId, onSelect, onCreate, onDelete, onClose }) {
-  const [newName, setNewName] = useState("");
-  const [newId, setNewId] = useState("");
-  const [error, setError] = useState("");
-  const inputRef = useRef(null);
-  useEffect(() => { inputRef.current?.focus(); }, []);
-
-  const handleCreate = () => {
-    const trimId = newId.trim();
-    const trimName = newName.trim();
-    if (!trimId) { setError("Guild ID is required."); return; }
-    if (guilds.find(g => g.id === trimId)) { setError("This Guild ID already exists."); return; }
-    onCreate({ id: trimId, name: trimName || `Guild ${trimId.slice(0,6)}` });
-    setNewId(""); setNewName(""); setError("");
-  };
+// ─── OVERVIEW TAB ───
+function OverviewTab({ guilds, activeGuild }) {
+  const stats = [
+    { label:"Total Guilds", value: guilds.length, sub:"Knowledge bases", icon:<Icon.Database />, color:"#6366f1" },
+    { label:"Active Guild", value: activeGuild.name, sub:"Currently selected", icon:<Icon.Activity />, color:"#10b981", mono:true },
+    { label:"Vector Store ID", value: activeGuild.id.slice(0,8)+"…", sub:"Full ID below", icon:<Icon.Folder />, color:"#f59e0b", mono:true },
+    { label:"Status", value:"Online", sub:"API connected", icon:<Icon.Activity />, color:"#10b981" },
+  ];
 
   return (
-    <div className="modal-bg" onClick={onClose} style={{ position:"fixed", inset:0, zIndex:1000, background:"rgba(0,0,0,0.6)", backdropFilter:"blur(12px)", display:"flex", alignItems:"center", justifyContent:"center", padding:24 }}>
-      <div className="modal-box" onClick={e => e.stopPropagation()} style={{ width:"100%", maxWidth:440, background:"rgba(20,8,2,0.85)", backdropFilter:"blur(24px)", border:"1px solid rgba(255,255,255,0.12)", borderRadius:24, overflow:"hidden", boxShadow:"0 40px 80px rgba(0,0,0,0.6)" }}>
-        <div style={{ padding:"24px 24px 0", display:"flex", alignItems:"flex-start", justifyContent:"space-between" }}>
-          <div>
-            <div style={{ fontFamily:"'Playfair Display', serif", fontSize:20, fontWeight:600, color:"#fff", letterSpacing:"-0.02em" }}>Knowledge Base</div>
-            <div style={{ fontSize:13, color:"rgba(255,255,255,0.5)", marginTop:3 }}>Switch or create a vector store</div>
-          </div>
-          <button onClick={onClose} style={{ background:"rgba(255,255,255,0.08)", border:"1px solid rgba(255,255,255,0.1)", color:"rgba(255,255,255,0.6)", cursor:"pointer", width:32, height:32, borderRadius:"50%", display:"flex", alignItems:"center", justifyContent:"center", fontSize:14, transition:"all .15s" }}>✕</button>
-        </div>
+    <div style={{ padding:"32px 36px", overflowY:"auto", flex:1 }}>
+      {/* Header */}
+      <div style={{ marginBottom:28 }}>
+        <div style={{ fontSize:11, fontWeight:600, letterSpacing:".08em", textTransform:"uppercase", color:"var(--text-muted)", marginBottom:6 }}>Overview</div>
+        <h1 style={{ fontSize:24, fontWeight:600, color:"var(--text-primary)", fontFamily:"'IBM Plex Mono', monospace", letterSpacing:"-0.02em" }}>
+          {activeGuild.name}
+        </h1>
+        <p style={{ fontSize:13, color:"var(--text-secondary)", marginTop:4 }}>
+          Vector Store ID: <span className="code-block">{activeGuild.id}</span>
+        </p>
+      </div>
 
-        <div style={{ padding:"18px 20px 8px", display:"flex", flexDirection:"column", gap:8, maxHeight:240, overflowY:"auto" }}>
-          {guilds.map(g => (
-            <div key={g.id} onClick={() => { onSelect(g.id); onClose(); }}
-              style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"12px 16px", borderRadius:14, cursor:"pointer", border:`1.5px solid ${g.id===activeId?"var(--rust)":"rgba(255,255,255,0.1)"}`, background:g.id===activeId?"rgba(184,74,26,0.2)":"rgba(255,255,255,0.05)", transition:"all .12s" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-                <div style={{ width:34, height:34, borderRadius:10, background:g.id===activeId?"var(--rust)":"rgba(255,255,255,0.1)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:12, fontWeight:700, color:"#fff", flexShrink:0 }}>{g.name.slice(0,2).toUpperCase()}</div>
-                <div>
-                  <div style={{ fontSize:13.5, fontWeight:g.id===activeId?600:400, color:"#fff" }}>{g.name}</div>
-                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", fontFamily:"'DM Mono', monospace", marginTop:1 }}>{g.id.slice(0,12)}…</div>
-                </div>
+      {/* Stats grid */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(2,1fr)", gap:14, marginBottom:28 }}>
+        {stats.map((s,i) => (
+          <div key={i} className="panel anim-up" style={{ animationDelay:`${i*0.05}s`, padding:"18px 20px" }}>
+            <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", marginBottom:12 }}>
+              <div style={{ width:34, height:34, borderRadius:"var(--radius-sm)", background:`rgba(${s.color==="#6366f1"?"99,102,241":s.color==="#10b981"?"16,185,129":"245,158,11"},0.12)`, display:"flex", alignItems:"center", justifyContent:"center", color:s.color }}>
+                {s.icon}
               </div>
-              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                {g.id===activeId && <div style={{ width:7, height:7, borderRadius:"50%", background:"#16a34a", boxShadow:"0 0 8px #4ade80" }} />}
-                {guilds.length > 1 && (
-                  <span onClick={e => { e.stopPropagation(); onDelete(g.id); }}
-                    style={{ fontSize:13, color:"rgba(255,255,255,0.3)", cursor:"pointer", padding:"2px 6px", borderRadius:6, transition:"all .12s" }}>✕</span>
-                )}
-              </div>
+              <span className="tag tag-accent" style={{ fontSize:10 }}>LIVE</span>
+            </div>
+            <div style={{ fontFamily: s.mono ? "'IBM Plex Mono', monospace" : "inherit", fontSize: s.mono ? 12 : 20, fontWeight:700, color:"var(--text-primary)", letterSpacing:s.mono?"-0.01em":"-0.03em", marginBottom:3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{s.value}</div>
+            <div style={{ fontSize:12, color:"var(--text-muted)" }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Guild list */}
+      <div className="panel anim-up d2" style={{ overflow:"hidden" }}>
+        <div style={{ padding:"14px 20px", borderBottom:"1px solid var(--border)", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+          <div style={{ fontSize:13, fontWeight:600, color:"var(--text-primary)" }}>All Knowledge Bases</div>
+          <span className="tag tag-accent">{guilds.length}</span>
+        </div>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Guild ID</th>
+              <th>Created</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {guilds.map(g => (
+              <tr key={g.id}>
+                <td>
+                  <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                    <div style={{ width:8, height:8, borderRadius:"50%", background:g.color || "#6366f1", flexShrink:0 }} />
+                    <span style={{ fontWeight:500, color: g.id===activeGuild.id ? "var(--text-primary)" : undefined }}>{g.name}</span>
+                    {g.id===activeGuild.id && <span className="tag tag-success" style={{ fontSize:9 }}>ACTIVE</span>}
+                  </div>
+                </td>
+                <td><span className="code-block">{g.id.slice(0,14)}…</span></td>
+                <td style={{ color:"var(--text-muted)" }}>{g.createdAt ? new Date(g.createdAt).toLocaleDateString() : "—"}</td>
+                <td><span className="status-dot status-online" style={{ display:"inline-block" }} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Quick tips */}
+      <div className="panel anim-up d3" style={{ padding:"20px", marginTop:14 }}>
+        <div style={{ fontSize:13, fontWeight:600, color:"var(--text-primary)", marginBottom:14 }}>Quick Start</div>
+        <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+          {[
+            ["1","Upload PDFs or paste URLs under Knowledge Base tab"],
+            ["2","Use Sub-URL Discovery to crawl entire websites"],
+            ["3","Test your knowledge base via the chat widget →"],
+            ["4","Switch or create guilds using the sidebar selector"],
+          ].map(([n, tip]) => (
+            <div key={n} style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
+              <div style={{ width:20, height:20, borderRadius:4, background:"rgba(99,102,241,0.15)", color:"#818cf8", fontSize:10, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontFamily:"'IBM Plex Mono', monospace" }}>{n}</div>
+              <p style={{ fontSize:12.5, color:"var(--text-secondary)", lineHeight:1.55 }}>{tip}</p>
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
 
-        <div style={{ padding:"16px 20px 24px", borderTop:"1px solid rgba(255,255,255,0.08)", marginTop:8 }}>
-          <div style={{ fontSize:11, color:"rgba(255,255,255,0.35)", letterSpacing:"0.06em", textTransform:"uppercase", fontWeight:600, marginBottom:12 }}>New Guild</div>
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-            <input ref={inputRef} value={newId} onChange={e => { setNewId(e.target.value); setError(""); }}
-              placeholder="Guild ID (e.g. 1234567890123456789)"
-              onKeyDown={e => e.key==="Enter" && handleCreate()}
-              className="muj-input"
-              style={{ borderRadius:12, fontSize:13, padding:"10px 14px", outline:"none", fontFamily:"'DM Mono', monospace" }} />
-            <input value={newName} onChange={e => setNewName(e.target.value)}
-              placeholder="Display name (optional)"
-              onKeyDown={e => e.key==="Enter" && handleCreate()}
-              className="muj-input"
-              style={{ borderRadius:12, fontSize:13, padding:"10px 14px", outline:"none", fontFamily:"'DM Sans', sans-serif" }} />
-            {error && <div style={{ fontSize:12, color:"#fca5a5" }}>{error}</div>}
-            <button onClick={handleCreate} className="btn-primary" style={{ width:"100%", padding:"11px" }}>
-              + Add Knowledge Base
+// ─── UPLOAD TAB ───
+function UploadTab({ guildId }) {
+  const [urls, setUrls] = useState("");
+  const [files, setFiles] = useState([]);
+  const [status, setStatus] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const fileRef = useRef(null);
+
+  const [sheetFile, setSheetFile] = useState(null);
+  const [sheetStatus, setSheetStatus] = useState(null);
+  const [sheetLoading, setSheetLoading] = useState(false);
+  const sheetRef = useRef(null);
+
+  const handleUpload = async () => {
+    if (!urls.trim() && !files.length) return;
+    setLoading(true); setStatus(null);
+    const fd = new FormData();
+    fd.append("guild_id", guildId);
+    if (urls.trim()) fd.append("urls", urls.trim());
+    files.forEach(f => fd.append("files", f));
+    try {
+      const r = await fetch("http://localhost:8000/upload", { method:"PUT", body:fd });
+      if (!r.ok) throw new Error(`Server error ${r.status}`);
+      const d = await r.json();
+      setStatus({ ok:true, msg:`✓ Uploaded — ${d.urls_processed || 0} URL(s), ${d.pdfs_processed || 0} PDF(s) processed` });
+      setUrls(""); setFiles([]);
+    } catch (e) {
+      setStatus({ ok:false, msg:"✗ "+e.message });
+    } finally { setLoading(false); }
+  };
+
+  const handleSheet = async () => {
+    if (!sheetFile) return;
+    setSheetLoading(true); setSheetStatus(null);
+    const fd = new FormData();
+    fd.append("guild_id", guildId);
+    fd.append("file", sheetFile);
+    try {
+      const r = await fetch("http://localhost:8000/upload-contacts", { method:"PUT", body:fd });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || `Error ${r.status}`);
+      setSheetStatus({ ok:true, msg:"✓ "+d.message });
+      setSheetFile(null);
+    } catch (e) {
+      setSheetStatus({ ok:false, msg:"✗ "+e.message });
+    } finally { setSheetLoading(false); }
+  };
+
+  return (
+    <div style={{ padding:"32px 36px", overflowY:"auto", flex:1 }}>
+      <div style={{ maxWidth:640 }}>
+        <div style={{ fontSize:11, fontWeight:600, letterSpacing:".08em", textTransform:"uppercase", color:"var(--text-muted)", marginBottom:6 }}>Knowledge Base</div>
+        <h1 style={{ fontSize:22, fontWeight:600, color:"var(--text-primary)", fontFamily:"'IBM Plex Mono', monospace", marginBottom:4 }}>Upload Content</h1>
+        <p style={{ fontSize:13, color:"var(--text-secondary)", marginBottom:28, lineHeight:1.6 }}>Ingest URLs and PDF documents into the active vector store.</p>
+
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          {/* URLs */}
+          <div className="panel anim-up" style={{ padding:"20px" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+              <div style={{ color:"#818cf8" }}><Icon.Globe /></div>
+              <div style={{ fontSize:13.5, fontWeight:600, color:"var(--text-primary)" }}>Web URLs</div>
+              <span className="tag tag-accent" style={{ marginLeft:"auto", fontSize:10 }}>One per line</span>
+            </div>
+            <textarea value={urls} onChange={e => setUrls(e.target.value)}
+              placeholder={"https://example.com/docs\nhttps://another.com/page"}
+              rows={4} className="field"
+              style={{ resize:"vertical", lineHeight:1.6, fontFamily:"'IBM Plex Mono', monospace", fontSize:12 }} />
+          </div>
+
+          {/* PDFs */}
+          <div className="panel anim-up d1" style={{ padding:"20px" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+              <div style={{ color:"#818cf8" }}><Icon.Upload /></div>
+              <div style={{ fontSize:13.5, fontWeight:600, color:"var(--text-primary)" }}>PDF Files</div>
+            </div>
+            <div className="drop-zone" onClick={() => fileRef.current?.click()}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => { e.preventDefault(); setFiles(p => [...p, ...[...e.dataTransfer.files].filter(f => f.type==="application/pdf")]); }}>
+              <div style={{ color:"var(--text-muted)" }}><Icon.Upload /></div>
+              <p style={{ fontSize:13, color:"var(--text-secondary)" }}>Drop PDFs here or <span style={{ color:"#818cf8", cursor:"pointer" }}>browse</span></p>
+              <p style={{ fontSize:11.5, color:"var(--text-muted)" }}>Multiple files supported</p>
+              <input ref={fileRef} type="file" accept=".pdf" multiple style={{ display:"none" }} onChange={e => setFiles(p => [...p, ...[...e.target.files]])} />
+            </div>
+            {files.length > 0 && (
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginTop:12 }}>
+                {files.map((f,i) => (
+                  <div key={i} style={{ display:"flex", alignItems:"center", gap:6, background:"rgba(99,102,241,0.1)", border:"1px solid rgba(99,102,241,0.2)", borderRadius:"var(--radius-sm)", padding:"4px 10px", fontSize:11.5, color:"#a5b4fc" }}>
+                    {f.name.length > 24 ? f.name.slice(0,21)+"…" : f.name}
+                    <span onClick={() => setFiles(p => p.filter((_,j) => j!==i))} style={{ cursor:"pointer", opacity:.5, display:"flex" }}><Icon.X /></span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {status && (
+            <div style={{ padding:"12px 16px", borderRadius:"var(--radius-md)", fontSize:13, background:status.ok?"var(--success-bg)":"var(--danger-bg)", border:`1px solid ${status.ok?"rgba(16,185,129,0.2)":"rgba(244,63,94,0.2)"}`, color:status.ok?"var(--success)":"var(--danger)" }}>
+              {status.msg}
+            </div>
+          )}
+
+          <button className="btn btn-primary anim-up d2" onClick={handleUpload} disabled={loading || (!urls.trim() && !files.length)} style={{ width:"100%", padding:"11px", justifyContent:"center" }}>
+            {loading ? <><div className="spinner" />Ingesting…</> : <><Icon.Upload />Upload to Vector Store</>}
+          </button>
+
+          {/* Divider */}
+          <div style={{ borderTop:"1px dashed var(--border)", paddingTop:24, marginTop:4 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14 }}>
+              <div style={{ color:"var(--success)" }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+              </div>
+              <div style={{ fontSize:13.5, fontWeight:600, color:"var(--text-primary)" }}>Structured Data Sheet</div>
+              <span className="tag tag-success" style={{ marginLeft:"auto", fontSize:10 }}>Priority Source</span>
+            </div>
+            <p style={{ fontSize:12.5, color:"var(--text-secondary)", marginBottom:14, lineHeight:1.6 }}>Upload an <span className="code-block">.xlsx</span> file for structured data like contacts, faculty, or product info.</p>
+
+            <div className="drop-zone" style={{ borderColor: sheetFile ? "var(--success)" : undefined, background: sheetFile ? "var(--success-bg)" : undefined }}
+              onClick={() => sheetRef.current?.click()}
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => { e.preventDefault(); const f = [...e.dataTransfer.files].find(f => f.name.endsWith(".xlsx")); if (f) setSheetFile(f); }}>
+              {sheetFile ? (
+                <>
+                  <div style={{ color:"var(--success)" }}><Icon.Check /></div>
+                  <p style={{ fontSize:13, fontWeight:600, color:"var(--success)" }}>{sheetFile.name}</p>
+                  <p style={{ fontSize:11, color:"var(--text-muted)" }}>{(sheetFile.size/1024).toFixed(1)} KB · Click to replace</p>
+                </>
+              ) : (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.8"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+                  <p style={{ fontSize:13, color:"var(--text-secondary)" }}>Drop <span style={{ color:"var(--text-primary)", fontWeight:600 }}>.xlsx</span> here or browse</p>
+                </>
+              )}
+              <input ref={sheetRef} type="file" accept=".xlsx" style={{ display:"none" }} onChange={e => { if (e.target.files[0]) setSheetFile(e.target.files[0]); }} />
+            </div>
+
+            {sheetStatus && (
+              <div style={{ marginTop:10, padding:"11px 14px", borderRadius:"var(--radius-md)", fontSize:13, background:sheetStatus.ok?"var(--success-bg)":"var(--danger-bg)", border:`1px solid ${sheetStatus.ok?"rgba(16,185,129,0.2)":"rgba(244,63,94,0.2)"}`, color:sheetStatus.ok?"var(--success)":"var(--danger)" }}>
+                {sheetStatus.msg}
+              </div>
+            )}
+
+            <button onClick={handleSheet} disabled={sheetLoading || !sheetFile}
+              className="btn btn-success" style={{ marginTop:12, width:"100%", padding:"11px", justifyContent:"center" }}>
+              {sheetLoading ? <><div className="spinner" />Uploading…</> : <>Save Structured Data</>}
             </button>
           </div>
         </div>
@@ -595,153 +708,109 @@ function SubUrlsTab({ guildId }) {
   const [ingestStatus, setIngestStatus] = useState(null);
   const [ingesting, setIngesting] = useState(false);
 
-  const fetchSubUrls = async () => {
+  const fetchUrls = async () => {
     const url = baseUrl.trim();
     if (!url) return;
     setFetching(true); setResults(null); setSelected(new Set()); setFilter(""); setIngestStatus(null);
     try {
-      const res = await fetch(`http://localhost:8000/sub-urls?url=${encodeURIComponent(url)}`);
-      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e?.detail || `HTTP ${res.status}`); }
-      const data = await res.json();
-      setResults(data);
+      const r = await fetch(`http://localhost:8000/sub-urls?url=${encodeURIComponent(url)}`);
+      if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e?.detail || `HTTP ${r.status}`); }
+      const d = await r.json();
+      setResults(d);
     } catch (e) {
-      setResults({ base_url: url, sub_urls: [], count: 0, error: e.message });
+      setResults({ base_url:url, sub_urls:[], count:0, error:e.message });
     } finally { setFetching(false); }
   };
 
-  const toggleSelect = (u) => setSelected(prev => {
-    const next = new Set(prev);
-    next.has(u) ? next.delete(u) : next.add(u);
-    return next;
-  });
-  const selectAll = () => setSelected(new Set(filtered));
-  const clearAll  = () => setSelected(new Set());
+  const toggle = (u) => setSelected(p => { const n = new Set(p); n.has(u)?n.delete(u):n.add(u); return n; });
+  const filtered = results ? results.sub_urls.filter(u => !filter || u.toLowerCase().includes(filter.toLowerCase())) : [];
 
-  const filtered = results
-    ? results.sub_urls.filter(u => !filter || u.toLowerCase().includes(filter.toLowerCase()))
-    : [];
-
-  const ingestSelected = async () => {
+  const ingest = async () => {
     if (!selected.size) return;
     setIngesting(true); setIngestStatus(null);
     const fd = new FormData();
     fd.append("guild_id", guildId);
     fd.append("urls", [...selected].join("\n"));
     try {
-      const res = await fetch("http://localhost:8000/upload", { method: "PUT", body: fd });
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
-      const d = await res.json();
-      setIngestStatus({ ok: true, msg: `${d.message} — ${d.urls_processed} URL(s) ingested into knowledge base.` });
+      const r = await fetch("http://localhost:8000/upload", { method:"PUT", body:fd });
+      if (!r.ok) throw new Error(`Server error ${r.status}`);
+      const d = await r.json();
+      setIngestStatus({ ok:true, msg:`✓ ${d.message} — ${d.urls_processed} URL(s) ingested` });
     } catch (e) {
-      setIngestStatus({ ok: false, msg: e.message });
+      setIngestStatus({ ok:false, msg:"✗ "+e.message });
     } finally { setIngesting(false); }
   };
 
   return (
-    <div className="page-scroll" style={{ flex: 1, overflowY: "auto", padding: "40px 48px" }}>
-      <div style={{ maxWidth: 720, margin: "0 auto" }}>
-        <div className="section-pill">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-          Sub URL Discovery
-        </div>
-        <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 700, color: "#fff", letterSpacing: "-0.03em", marginBottom: 6 }}>
-          Discover Sub-URLs
-        </h2>
-        <p style={{ fontSize: 14, color: "rgba(255,255,255,0.6)", marginBottom: 32, lineHeight: 1.6 }}>
-          Enter a website URL to extract all its hyperlinks. Select the ones you want and ingest them directly into your knowledge base.
-        </p>
+    <div style={{ padding:"32px 36px", overflowY:"auto", flex:1 }}>
+      <div style={{ maxWidth:700 }}>
+        <div style={{ fontSize:11, fontWeight:600, letterSpacing:".08em", textTransform:"uppercase", color:"var(--text-muted)", marginBottom:6 }}>Discovery</div>
+        <h1 style={{ fontSize:22, fontWeight:600, color:"var(--text-primary)", fontFamily:"'IBM Plex Mono', monospace", marginBottom:4 }}>Sub-URL Crawler</h1>
+        <p style={{ fontSize:13, color:"var(--text-secondary)", marginBottom:28, lineHeight:1.6 }}>Crawl a website to discover all linked pages, select the ones you need, and ingest them directly.</p>
 
-        <div className="card" style={{ padding: 24, marginBottom: 20 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(184,74,26,0.25)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffb899" strokeWidth="2" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        {/* Input */}
+        <div className="panel anim-up" style={{ padding:"20px", marginBottom:16 }}>
+          <div style={{ display:"flex", gap:10 }}>
+            <div style={{ flex:1, position:"relative" }}>
+              <div style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:"var(--text-muted)" }}><Icon.Search /></div>
+              <input value={baseUrl} onChange={e => setBaseUrl(e.target.value)}
+                onKeyDown={e => e.key==="Enter" && fetchUrls()}
+                placeholder="https://example.com"
+                className="field" style={{ paddingLeft:36, fontFamily:"'IBM Plex Mono', monospace", fontSize:12 }} />
             </div>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>Target URL</div>
-              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>Enter the page to scrape links from</div>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 10 }}>
-            <input
-              value={baseUrl}
-              onChange={e => setBaseUrl(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && fetchSubUrls()}
-              placeholder="https://manipal.edu/muj"
-              className="muj-input"
-              style={{ flex: 1, borderRadius: 12, fontSize: 13.5, padding: "11px 16px", outline: "none", fontFamily: "'DM Sans', sans-serif" }}
-            />
-            <button
-              className="btn-primary"
-              onClick={fetchSubUrls}
-              disabled={fetching || !baseUrl.trim()}
-              style={{ padding: "11px 22px", borderRadius: 12, display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-              {fetching
-                ? <><div className="spinner" />Scanning…</>
-                : <><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>Discover</>
-              }
+            <button className="btn btn-primary" onClick={fetchUrls} disabled={fetching || !baseUrl.trim()} style={{ padding:"9px 20px" }}>
+              {fetching ? <><div className="spinner" />Scanning…</> : <><Icon.Search />Discover</>}
             </button>
           </div>
         </div>
 
         {results && (
-          <div className="anim-fadeup">
+          <div className="anim-up">
             {results.error ? (
-              <div style={{ padding: "16px 20px", borderRadius: 14, background: "rgba(185,28,28,0.15)", border: "1px solid rgba(185,28,28,0.3)", color: "#fca5a5", fontSize: 13.5 }}>
+              <div style={{ padding:"14px 16px", borderRadius:"var(--radius-md)", background:"var(--danger-bg)", border:"1px solid rgba(244,63,94,0.2)", color:"var(--danger)", fontSize:13 }}>
                 ✗ {results.error}
               </div>
             ) : (
-              <div className="card" style={{ padding: 0, overflow: "hidden" }}>
-                <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(255,255,255,0.08)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(184,74,26,0.2)", border: "1px solid rgba(184,74,26,0.3)", borderRadius: 100, padding: "4px 12px" }}>
-                      <span style={{ fontSize: 12, fontWeight: 600, color: "#ffb899" }}>{results.count} URLs found</span>
-                    </div>
-                    {selected.size > 0 && (
-                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", fontWeight: 500 }}>{selected.size} selected</div>
-                    )}
+              <div className="panel" style={{ overflow:"hidden" }}>
+                {/* Toolbar */}
+                <div style={{ padding:"12px 16px", borderBottom:"1px solid var(--border)", display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
+                  <span className="tag tag-accent">{results.count} URLs</span>
+                  {selected.size > 0 && <span className="tag tag-success">{selected.size} selected</span>}
+                  <div style={{ flex:1, minWidth:160, position:"relative" }}>
+                    <div style={{ position:"absolute", left:10, top:"50%", transform:"translateY(-50%)", color:"var(--text-muted)" }}><Icon.Search /></div>
+                    <input value={filter} onChange={e => setFilter(e.target.value)} placeholder="Filter…"
+                      className="field" style={{ paddingLeft:32, height:32, fontSize:12, fontFamily:"'IBM Plex Mono', monospace" }} />
                   </div>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-                    <input
-                      value={filter}
-                      onChange={e => setFilter(e.target.value)}
-                      placeholder="Filter URLs…"
-                      className="muj-input"
-                      style={{ borderRadius: 10, fontSize: 12.5, padding: "7px 12px", outline: "none", width: 180, fontFamily: "'DM Sans', sans-serif" }}
-                    />
-                    <button className="btn-secondary" onClick={selectAll} style={{ padding: "7px 14px", fontSize: 12, borderRadius: 10 }}>Select All</button>
-                    <button className="btn-secondary" onClick={clearAll} style={{ padding: "7px 14px", fontSize: 12, borderRadius: 10 }}>Clear</button>
-                  </div>
+                  <button className="btn btn-ghost" onClick={() => setSelected(new Set(filtered))} style={{ padding:"6px 12px", fontSize:12 }}>Select All</button>
+                  <button className="btn btn-ghost" onClick={() => setSelected(new Set())} style={{ padding:"6px 12px", fontSize:12 }}>Clear</button>
                 </div>
 
-                <div className="chat-scroll" style={{ maxHeight: 340, overflowY: "auto" }}>
-                  {filtered.length === 0 ? (
-                    <div style={{ padding: "32px 20px", textAlign: "center", color: "rgba(255,255,255,0.35)", fontSize: 13.5 }}>No URLs match your filter.</div>
-                  ) : (
-                    filtered.map((u, i) => {
-                      const isSelected = selected.has(u);
-                      return (
-                        <div key={i} onClick={() => toggleSelect(u)}
-                          style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 20px", borderBottom: i < filtered.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none", cursor: "pointer", background: isSelected ? "rgba(184,74,26,0.15)" : "transparent", transition: "background 0.12s" }}>
-                          <div style={{ width: 18, height: 18, borderRadius: 6, flexShrink: 0, border: `2px solid ${isSelected ? "var(--rust)" : "rgba(255,255,255,0.2)"}`, background: isSelected ? "var(--rust)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.12s" }}>
-                            {isSelected && <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+                {/* List */}
+                <div style={{ maxHeight:320, overflowY:"auto" }}>
+                  {filtered.length === 0
+                    ? <div style={{ padding:"28px", textAlign:"center", color:"var(--text-muted)", fontSize:13 }}>No URLs match filter</div>
+                    : filtered.map((u, i) => {
+                        const sel = selected.has(u);
+                        return (
+                          <div key={i} className={`check-row${sel?" selected":""}`} onClick={() => toggle(u)}>
+                            <div className={`custom-check${sel?" checked":""}`}>
+                              {sel && <Icon.Check />}
+                            </div>
+                            <span style={{ fontSize:12, color: sel?"#a5b4fc":"var(--text-muted)", fontFamily:"'IBM Plex Mono', monospace", wordBreak:"break-all", flex:1, lineHeight:1.5 }}>{u}</span>
+                            <a href={u} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ color:"var(--text-muted)", display:"flex", flexShrink:0 }}><Icon.ExternalLink /></a>
                           </div>
-                          <span style={{ fontSize: 12.5, color: isSelected ? "#ffb899" : "rgba(255,255,255,0.55)", fontFamily: "'DM Mono', monospace", wordBreak: "break-all", flex: 1, lineHeight: 1.5 }}>{u}</span>
-                          <a href={u} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} style={{ flexShrink: 0, color: "rgba(255,255,255,0.3)" }} title="Open in new tab">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                          </a>
-                        </div>
-                      );
-                    })
-                  )}
+                        );
+                      })
+                  }
                 </div>
 
-                <div style={{ padding: "14px 20px", borderTop: "1px solid rgba(255,255,255,0.08)", background: "rgba(0,0,0,0.15)", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                  <div style={{ fontSize: 12.5, color: "rgba(255,255,255,0.5)" }}>
-                    {selected.size > 0 ? `${selected.size} URL${selected.size > 1 ? "s" : ""} selected for ingestion` : "Select URLs above to ingest into your knowledge base"}
-                  </div>
-                  <button className="btn-primary" onClick={ingestSelected} disabled={ingesting || selected.size === 0}
-                    style={{ padding: "10px 20px", fontSize: 13, borderRadius: 12, display: "flex", alignItems: "center", gap: 8 }}>
-                    {ingesting ? <><div className="spinner" />Ingesting…</> : <>Ingest Selected</>}
+                {/* Footer */}
+                <div style={{ padding:"12px 16px", borderTop:"1px solid var(--border)", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10, flexWrap:"wrap" }}>
+                  <p style={{ fontSize:12, color:"var(--text-muted)" }}>
+                    {selected.size > 0 ? `${selected.size} URL${selected.size>1?"s":""} queued for ingestion` : "Select URLs to ingest"}
+                  </p>
+                  <button className="btn btn-primary" onClick={ingest} disabled={ingesting || selected.size===0} style={{ padding:"8px 18px" }}>
+                    {ingesting ? <><div className="spinner" />Ingesting…</> : <>Ingest Selected ({selected.size})</>}
                   </button>
                 </div>
               </div>
@@ -750,8 +819,8 @@ function SubUrlsTab({ guildId }) {
         )}
 
         {ingestStatus && (
-          <div className="anim-fadein" style={{ marginTop: 16, padding: "14px 18px", borderRadius: 14, fontSize: 13.5, lineHeight: 1.55, background: ingestStatus.ok ? "rgba(22,163,74,0.12)" : "rgba(185,28,28,0.12)", border: `1px solid ${ingestStatus.ok ? "rgba(22,163,74,0.3)" : "rgba(185,28,28,0.3)"}`, color: ingestStatus.ok ? "#86efac" : "#fca5a5" }}>
-            {ingestStatus.ok ? "✓ " : "✗ "}{ingestStatus.msg}
+          <div className="anim-in" style={{ marginTop:14, padding:"12px 16px", borderRadius:"var(--radius-md)", fontSize:13, background:ingestStatus.ok?"var(--success-bg)":"var(--danger-bg)", border:`1px solid ${ingestStatus.ok?"rgba(16,185,129,0.2)":"rgba(244,63,94,0.2)"}`, color:ingestStatus.ok?"var(--success)":"var(--danger)" }}>
+          {ingestStatus.msg}
           </div>
         )}
       </div>
@@ -759,269 +828,104 @@ function SubUrlsTab({ guildId }) {
   );
 }
 
-// ─── UPLOAD TAB ───
-function UploadTab({ guildId }) {
-  const [uploadUrls, setUploadUrls] = useState("");
-  const [uploadFiles, setUploadFiles] = useState([]);
-  const [uploadStatus, setUploadStatus] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const fileRef = useRef(null);
+// ─── SETTINGS TAB ───
+function SettingsTab({ guilds, activeId, onSelect, onCreate, onDelete, onRename }) {
+  const [newName, setNewName] = useState("");
+  const [newId, setNewId] = useState("");
+  const [error, setError] = useState("");
+  const [editId, setEditId] = useState(null);
+  const [editName, setEditName] = useState("");
+  const [colorPick, setColorPick] = useState(GUILD_COLORS[0]);
 
-  const [contactFile, setContactFile] = useState(null);
-  const [contactStatus, setContactStatus] = useState(null);
-  const [contactUploading, setContactUploading] = useState(false);
-  const contactRef = useRef(null);
-
-  const handleUpload = async () => {
-    if (!uploadUrls.trim() && !uploadFiles.length) return;
-    setUploading(true); setUploadStatus(null);
-    const fd = new FormData();
-    fd.append("guild_id", guildId);
-    if (uploadUrls.trim()) fd.append("urls", uploadUrls.trim());
-    uploadFiles.forEach(f => fd.append("files", f));
-    try {
-      const res = await fetch("http://localhost:8000/upload", { method:"PUT", body:fd });
-      if (!res.ok) throw new Error(`Server error ${res.status}`);
-      const d = await res.json();
-      setUploadStatus({ ok:true, msg:`${d.message} — ${d.urls_processed} URL(s), ${d.pdfs_processed} PDF(s)` });
-      setUploadUrls(""); setUploadFiles([]);
-    } catch (e) {
-      setUploadStatus({ ok:false, msg:e.message });
-    } finally { setUploading(false); }
-  };
-
-  const handleContactUpload = async () => {
-    if (!contactFile) return;
-    setContactUploading(true); setContactStatus(null);
-    const fd = new FormData();
-    fd.append("guild_id", guildId);
-    fd.append("file", contactFile);
-    try {
-      const res = await fetch("http://localhost:8000/upload-contacts", { method:"PUT", body:fd });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.detail || `Server error ${res.status}`);
-      setContactStatus({ ok:true, msg:d.message });
-      setContactFile(null);
-    } catch (e) {
-      setContactStatus({ ok:false, msg:e.message });
-    } finally { setContactUploading(false); }
+  const create = () => {
+    const tid = newId.trim(), tname = newName.trim();
+    if (!tid) { setError("Guild ID is required."); return; }
+    if (guilds.find(g => g.id===tid)) { setError("This ID already exists."); return; }
+    onCreate({ id:tid, name:tname || `Guild ${tid.slice(0,6)}`, createdAt:Date.now(), color:colorPick });
+    setNewId(""); setNewName(""); setError("");
   };
 
   return (
-    <div className="page-scroll" style={{ flex:1, overflowY:"auto", padding:"40px 48px" }}>
-      <div style={{ maxWidth:640, margin:"0 auto" }}>
-        <div className="section-pill">
-          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-          Ingest Content
-        </div>
-        <h2 style={{ fontFamily:"'Playfair Display', serif", fontSize:28, fontWeight:700, color:"#fff", letterSpacing:"-0.03em", marginBottom:6 }}>
-          Knowledge Base
-        </h2>
-        <p style={{ fontSize:14, color:"rgba(255,255,255,0.6)", marginBottom:32, lineHeight:1.6 }}>
-          Add URLs or PDFs to populate your vector store with university content.
-        </p>
+    <div style={{ padding:"32px 36px", overflowY:"auto", flex:1 }}>
+      <div style={{ maxWidth:600 }}>
+        <div style={{ fontSize:11, fontWeight:600, letterSpacing:".08em", textTransform:"uppercase", color:"var(--text-muted)", marginBottom:6 }}>Configuration</div>
+        <h1 style={{ fontSize:22, fontWeight:600, color:"var(--text-primary)", fontFamily:"'IBM Plex Mono', monospace", marginBottom:4 }}>Guild Settings</h1>
+        <p style={{ fontSize:13, color:"var(--text-secondary)", marginBottom:28, lineHeight:1.6 }}>Manage knowledge base guilds — switch, create, rename, or remove them.</p>
 
-        <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
-          <div className="card" style={{ padding:24 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
-              <div style={{ width:36, height:36, borderRadius:10, background:"rgba(184,74,26,0.25)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffb899" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-              </div>
-              <div>
-                <div style={{ fontSize:14, fontWeight:600, color:"#fff" }}>Web URLs</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>One URL per line</div>
-              </div>
-            </div>
-            <textarea value={uploadUrls} onChange={e => setUploadUrls(e.target.value)}
-              placeholder={"https://manipal.edu/muj\nhttps://another-page.io"}
-              rows={4}
-              className="muj-input"
-              style={{ width:"100%", borderRadius:12, fontSize:13.5, padding:"12px 16px", outline:"none", resize:"vertical", lineHeight:1.6, fontFamily:"'DM Sans', sans-serif" }} />
+        {/* Existing guilds */}
+        <div className="panel anim-up" style={{ overflow:"hidden", marginBottom:20 }}>
+          <div style={{ padding:"14px 18px", borderBottom:"1px solid var(--border)" }}>
+            <span style={{ fontSize:13, fontWeight:600, color:"var(--text-primary)" }}>Registered Guilds</span>
           </div>
-
-          <div className="card" style={{ padding:24 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:16 }}>
-              <div style={{ width:36, height:36, borderRadius:10, background:"rgba(184,74,26,0.25)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ffb899" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          {guilds.map(g => (
+            <div key={g.id} style={{ padding:"14px 18px", borderBottom:"1px solid rgba(255,255,255,0.04)", display:"flex", alignItems:"center", gap:12 }}>
+              <div style={{ width:32, height:32, borderRadius:"var(--radius-sm)", background:`rgba(${g.color?.slice(1)||"6366f1"}, 0.15)`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:11, fontWeight:700, color:g.color||"#6366f1", fontFamily:"'IBM Plex Mono', monospace" }}>
+                {g.name.slice(0,2).toUpperCase()}
               </div>
-              <div>
-                <div style={{ fontSize:14, fontWeight:600, color:"#fff" }}>PDF Files</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>Drag & drop or click to browse</div>
+              <div style={{ flex:1, minWidth:0 }}>
+                {editId===g.id ? (
+                  <input autoFocus value={editName} onChange={e => setEditName(e.target.value)}
+                    onKeyDown={e => { if (e.key==="Enter") { onRename(g.id, editName); setEditId(null); } if (e.key==="Escape") setEditId(null); }}
+                    className="field" style={{ height:30, fontSize:13, padding:"4px 10px" }} />
+                ) : (
+                  <>
+                    <div style={{ fontSize:13, fontWeight:500, color:"var(--text-primary)", display:"flex", alignItems:"center", gap:8 }}>
+                      {g.name}
+                      {g.id===activeId && <span className="tag tag-success" style={{ fontSize:9 }}>ACTIVE</span>}
+                    </div>
+                    <div className="code-block" style={{ display:"inline-block", marginTop:3, fontSize:10.5 }}>{g.id.slice(0,16)}…</div>
+                  </>
+                )}
               </div>
-            </div>
-            <div className="upload-zone" onClick={() => fileRef.current?.click()}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => { e.preventDefault(); setUploadFiles(p => [...p, ...[...e.dataTransfer.files].filter(f => f.type==="application/pdf")]); }}>
-              <div style={{ width:48, height:48, borderRadius:14, background:"rgba(184,74,26,0.2)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffb899" strokeWidth="1.8" strokeLinecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <div style={{ display:"flex", gap:6, flexShrink:0 }}>
+                {g.id!==activeId && (
+                  <button className="btn btn-ghost" style={{ padding:"5px 12px", fontSize:12 }} onClick={() => onSelect(g.id)}>
+                    Activate
+                  </button>
+                )}
+                <button className="btn btn-ghost" style={{ padding:"5px 10px" }}
+                  onClick={() => { setEditId(g.id===editId?null:g.id); setEditName(g.name); }}
+                  title="Rename">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                {guilds.length>1 && (
+                  <button className="btn btn-danger" style={{ padding:"5px 10px" }} onClick={() => onDelete(g.id)} title="Delete">
+                    <Icon.Trash />
+                  </button>
+                )}
               </div>
-              <div style={{ fontSize:14, color:"rgba(255,255,255,0.6)", textAlign:"center" }}>Drop PDFs here or <span style={{ color:"#ffb899", fontWeight:500 }}>browse files</span></div>
-              <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)" }}>Supports multiple PDF files</div>
-              <input ref={fileRef} type="file" accept=".pdf" multiple style={{ display:"none" }} onChange={e => setUploadFiles(p => [...p, ...[...e.target.files]])} />
-            </div>
-            {uploadFiles.length > 0 && (
-              <div style={{ display:"flex", flexWrap:"wrap", gap:8, marginTop:14 }}>
-                {uploadFiles.map((f, i) => (
-                  <div key={i} style={{ display:"flex", alignItems:"center", gap:8, background:"rgba(184,74,26,0.2)", border:"1px solid rgba(184,74,26,0.3)", borderRadius:10, padding:"6px 12px", fontSize:12.5, color:"#ffb899" }}>
-                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    {f.name.length > 26 ? f.name.slice(0,23)+"…" : f.name}
-                    <span onClick={() => setUploadFiles(p => p.filter((_,j) => j!==i))} style={{ cursor:"pointer", color:"rgba(255,184,153,0.5)", marginLeft:2 }}>✕</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {uploadStatus && (
-            <div style={{ padding:"14px 18px", borderRadius:14, fontSize:13.5, lineHeight:1.55, background:uploadStatus.ok?"rgba(22,163,74,0.12)":"rgba(185,28,28,0.12)", border:`1px solid ${uploadStatus.ok?"rgba(22,163,74,0.3)":"rgba(185,28,28,0.3)"}`, color:uploadStatus.ok?"#86efac":"#fca5a5" }}>
-              {uploadStatus.ok?"✓ ":"✗ "}{uploadStatus.msg}
-            </div>
-          )}
-
-          <button className="btn-primary" onClick={handleUpload}
-            disabled={uploading || (!uploadUrls.trim() && !uploadFiles.length)}
-            style={{ width:"100%", padding:"14px", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center", gap:10, borderRadius:14 }}>
-            {uploading ? <><div className="spinner" />Ingesting content…</> : <>Upload to Knowledge Base</>}
-          </button>
-
-          <div style={{ marginTop:12, borderTop:"1.5px dashed rgba(255,255,255,0.1)", paddingTop:28 }}>
-            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:6 }}>
-              <div style={{ width:36, height:36, borderRadius:10, background:"rgba(22,163,74,0.15)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#86efac" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
-              </div>
-              <div>
-                <div style={{ fontSize:14, fontWeight:600, color:"#fff" }}>Faculty Contact Sheet</div>
-                <div style={{ fontSize:12, color:"rgba(255,255,255,0.4)" }}>Phone, email & cabin answers come directly from this</div>
-              </div>
-              <div style={{ marginLeft:"auto" }}>
-                <span style={{ fontSize:10.5, fontWeight:600, letterSpacing:"0.05em", textTransform:"uppercase", background:"rgba(22,163,74,0.15)", color:"#86efac", border:"1px solid rgba(22,163,74,0.25)", borderRadius:100, padding:"3px 10px" }}>Priority Source</span>
-              </div>
-            </div>
-
-            <div className="upload-zone" onClick={() => contactRef.current?.click()}
-              onDragOver={e => e.preventDefault()}
-              onDrop={e => { e.preventDefault(); const f = [...e.dataTransfer.files].find(f => f.name.endsWith(".xlsx")); if (f) setContactFile(f); }}
-              style={{ padding:"24px 20px", borderColor: contactFile ? "var(--rust)" : undefined, background: contactFile ? "rgba(184,74,26,0.12)" : undefined }}>
-              <div style={{ width:40, height:40, borderRadius:12, background:"rgba(22,163,74,0.12)", display:"flex", alignItems:"center", justifyContent:"center" }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#86efac" strokeWidth="1.8" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
-              </div>
-              {contactFile ? (
-                <div style={{ textAlign:"center" }}>
-                  <div style={{ fontSize:13.5, fontWeight:600, color:"#ffb899" }}>{contactFile.name}</div>
-                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)", marginTop:3 }}>{(contactFile.size / 1024).toFixed(1)} KB · Click to change</div>
-                </div>
-              ) : (
-                <>
-                  <div style={{ fontSize:13.5, color:"rgba(255,255,255,0.6)", textAlign:"center" }}>Drop <strong style={{ color:"#fff" }}>.xlsx</strong> here or <span style={{ color:"#ffb899", fontWeight:500 }}>browse</span></div>
-                  <div style={{ fontSize:12, color:"rgba(255,255,255,0.35)" }}>Faculty list spreadsheet</div>
-                </>
-              )}
-              <input ref={contactRef} type="file" accept=".xlsx" style={{ display:"none" }} onChange={e => { if (e.target.files[0]) setContactFile(e.target.files[0]); }} />
-            </div>
-
-            {contactStatus && (
-              <div style={{ marginTop:10, padding:"12px 16px", borderRadius:12, fontSize:13, lineHeight:1.55, background: contactStatus.ok ? "rgba(22,163,74,0.12)" : "rgba(185,28,28,0.12)", border:`1px solid ${contactStatus.ok ? "rgba(22,163,74,0.3)" : "rgba(185,28,28,0.3)"}`, color: contactStatus.ok ? "#86efac" : "#fca5a5" }}>
-                {contactStatus.ok ? "✓ " : "✗ "}{contactStatus.msg}
-              </div>
-            )}
-
-            <button onClick={handleContactUpload} disabled={contactUploading || !contactFile}
-              style={{ marginTop:12, width:"100%", padding:"12px", fontSize:13.5, borderRadius:12, display:"flex", alignItems:"center", justifyContent:"center", gap:8, background: contactFile && !contactUploading ? "rgba(22,163,74,0.7)" : "rgba(255,255,255,0.06)", color: contactFile && !contactUploading ? "#fff" : "rgba(255,255,255,0.3)", border:`1px solid ${contactFile && !contactUploading ? "rgba(22,163,74,0.5)" : "rgba(255,255,255,0.08)"}`, cursor: contactFile && !contactUploading ? "pointer" : "not-allowed", fontFamily:"'DM Sans', sans-serif", fontWeight:600, transition:"all 0.2s" }}>
-              {contactUploading ? <><div className="spinner" />Uploading contacts…</> : <>Save Contact Sheet</>}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── HOME PAGE ───
-const STATS = [
-  { value: "NAAC A+", label: "Accreditation", icon: "🏛️" },
-  { value: "200+", label: "Programs", icon: "📚" },
-  { value: "15,000+", label: "Students", icon: "🎓" },
-  { value: "500+", label: "Faculty", icon: "👨‍🏫" },
-];
-
-const SCHOOLS = [
-  "Engineering & Technology", "Management & Commerce", "Law", "Design",
-  "Life Sciences", "Humanities & Social Sciences", "Computer Applications", "Architecture",
-];
-
-function HomePage({ onChat }) {
-  return (
-    <div className="page-scroll" style={{ flex:1, overflowY:"auto" }}>
-      {/* Hero */}
-      <div style={{ minHeight: 520, display: "flex", alignItems: "center", justifyContent: "center", padding: "80px 24px", position: "relative" }}>
-        <div style={{ position: "relative", zIndex: 1, textAlign: "center", maxWidth: 680 }}>
-          <div className="anim-fadein" style={{ display: "inline-flex", alignItems: "center", gap: 8, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 100, padding: "5px 16px", fontSize: 11.5, color: "rgba(255,255,255,0.8)", fontWeight: 500, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 28, backdropFilter: "blur(6px)" }}>
-            <div style={{ width: 6, height: 6, borderRadius: "50%", background: "#a7f3d0", boxShadow: "0 0 8px #6ee7b7" }} />
-            Established 2011 · Jaipur, Rajasthan
-          </div>
-
-          <h1 className="anim-fadeup delay-1" style={{ fontFamily: "'Playfair Display', serif", fontSize: 56, fontWeight: 700, color: "#fff", lineHeight: 1.1, letterSpacing: "-0.03em", marginBottom: 20, textShadow: "0 2px 32px rgba(0,0,0,0.5)" }}>
-            Inspired by Life.<br />
-            <em style={{ color: "rgba(255,255,255,0.65)", fontWeight: 400 }}>Built for Excellence.</em>
-          </h1>
-
-          <p className="anim-fadeup delay-2" style={{ fontSize: 17, color: "rgba(255,255,255,0.65)", lineHeight: 1.7, maxWidth: 520, margin: "0 auto 40px", textShadow: "0 1px 8px rgba(0,0,0,0.3)" }}>
-            Manipal University Jaipur — a premier destination for higher education, research, and innovation in India.
-          </p>
-
-          <div className="anim-fadeup delay-3" style={{ display: "flex", gap: 14, flexWrap: "wrap", justifyContent: "center" }}>
-            <button className="btn-primary" onClick={onChat}
-              style={{ background: "#fff", color: "var(--rust)", boxShadow: "0 8px 32px rgba(0,0,0,0.3)", display: "flex", alignItems: "center", gap: 10, padding: "14px 28px", fontSize: 14, borderRadius: 14 }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              Ask AI Assistant
-            </button>
-            <button style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "1.5px solid rgba(255,255,255,0.3)", borderRadius: 14, padding: "13px 24px", fontSize: 14, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 500, backdropFilter: "blur(6px)", transition: "all 0.2s" }}>
-              Explore Programs
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div style={{ padding:"40px 48px", background:"rgba(0,0,0,0.25)", backdropFilter:"blur(8px)", borderTop:"1px solid rgba(255,255,255,0.06)", borderBottom:"1px solid rgba(255,255,255,0.06)" }}>
-        <div className="stats-grid" style={{ maxWidth:900, margin:"0 auto" }}>
-          {STATS.map((s, i) => (
-            <div key={i} className="stat-card anim-fadein" style={{ animationDelay:`${i*0.1}s` }}>
-              <div style={{ fontSize:28, marginBottom:6 }}>{s.icon}</div>
-              <div style={{ fontFamily:"'Playfair Display', serif", fontSize:26, fontWeight:700, color:"#ffb899", letterSpacing:"-0.02em" }}>{s.value}</div>
-              <div style={{ fontSize:12.5, color:"rgba(255,255,255,0.55)", fontWeight:500, marginTop:2 }}>{s.label}</div>
             </div>
           ))}
         </div>
-      </div>
 
-      {/* Schools */}
-      <div style={{ padding:"48px 48px 60px" }}>
-        <div style={{ maxWidth:900, margin:"0 auto" }}>
-          <div className="section-pill">Academic Schools</div>
-          <h2 style={{ fontFamily:"'Playfair Display', serif", fontSize:32, fontWeight:700, color:"#fff", letterSpacing:"-0.03em", marginBottom:8 }}>30+ Schools & Departments</h2>
-          <p style={{ fontSize:14, color:"rgba(255,255,255,0.55)", marginBottom:32, lineHeight:1.65 }}>World-class education across disciplines, designed to shape tomorrow's leaders.</p>
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(200px,1fr))", gap:14 }}>
-            {SCHOOLS.map((s, i) => (
-              <div key={i} className="card" style={{ padding:"18px 20px", cursor:"pointer", display:"flex", alignItems:"center", gap:12 }}>
-                <div style={{ width:36, height:36, borderRadius:10, background:"rgba(184,74,26,0.2)", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                  <div style={{ width:10, height:10, borderRadius:"50%", background:"#ffb899" }} />
-                </div>
-                <div style={{ fontSize:13, fontWeight:500, color:"rgba(255,255,255,0.85)", lineHeight:1.4 }}>{s}</div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ marginTop:48, background:"rgba(184,74,26,0.15)", backdropFilter:"blur(12px)", border:"1.5px solid rgba(184,74,26,0.25)", borderRadius:24, padding:"36px 40px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:24, flexWrap:"wrap" }}>
+        {/* Create new */}
+        <div className="panel anim-up d1" style={{ padding:"20px" }}>
+          <div style={{ fontSize:13, fontWeight:600, color:"var(--text-primary)", marginBottom:16 }}>Create New Guild</div>
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
             <div>
-              <div style={{ fontFamily:"'Playfair Display', serif", fontSize:22, fontWeight:700, color:"#fff", letterSpacing:"-0.02em", marginBottom:8 }}>Have questions?</div>
-              <div style={{ fontSize:14, color:"rgba(255,255,255,0.6)", lineHeight:1.6, maxWidth:400 }}>
-                Our AI assistant can answer queries about admissions, programs, fees, campus life, and more — instantly.
+              <label style={{ fontSize:11.5, color:"var(--text-muted)", fontWeight:600, display:"block", marginBottom:5 }}>GUILD ID *</label>
+              <input value={newId} onChange={e => { setNewId(e.target.value); setError(""); }}
+                placeholder="e.g. 1234567890123456789"
+                className="field field-mono" />
+            </div>
+            <div>
+              <label style={{ fontSize:11.5, color:"var(--text-muted)", fontWeight:600, display:"block", marginBottom:5 }}>DISPLAY NAME</label>
+              <input value={newName} onChange={e => setNewName(e.target.value)}
+                placeholder="My Knowledge Base"
+                className="field" />
+            </div>
+            <div>
+              <label style={{ fontSize:11.5, color:"var(--text-muted)", fontWeight:600, display:"block", marginBottom:8 }}>COLOR</label>
+              <div style={{ display:"flex", gap:8 }}>
+                {GUILD_COLORS.map(c => (
+                  <div key={c} onClick={() => setColorPick(c)}
+                    style={{ width:22, height:22, borderRadius:"50%", background:c, cursor:"pointer", border:`2px solid ${colorPick===c?"#fff":"transparent"}`, boxSizing:"border-box", transition:"border .1s" }} />
+                ))}
               </div>
             </div>
-            <button className="btn-primary" onClick={onChat} style={{ padding:"14px 28px", fontSize:14, borderRadius:14, display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-              Chat with AI
+            {error && <p style={{ fontSize:12.5, color:"var(--danger)" }}>{error}</p>}
+            <button className="btn btn-primary" onClick={create} style={{ marginTop:4, padding:"10px", justifyContent:"center" }}>
+              <Icon.Plus />Create Guild
             </button>
           </div>
         </div>
@@ -1031,115 +935,154 @@ function HomePage({ onChat }) {
 }
 
 // ─── ROOT APP ───
+const TABS = [
+  { id:"overview", label:"Overview", icon:<Icon.Home /> },
+  { id:"upload", label:"Knowledge Base", icon:<Icon.Upload /> },
+  { id:"suburls", label:"Sub-URL Crawler", icon:<Icon.Globe /> },
+  { id:"settings", label:"Guild Settings", icon:<Icon.Settings /> },
+];
+
 export default function App() {
   const [guilds, setGuilds] = useState(getStoredGuilds);
-  const [activeGuildId, setActiveId] = useState(getStoredActiveId);
-  const [showGuildModal, setGuildModal] = useState(false);
-  const [tab, setTab] = useState("home");
+  const [activeId, setActiveId] = useState(getStoredActiveId);
+  const [tab, setTab] = useState("overview");
   const [chatOpen, setChatOpen] = useState(false);
 
-  const activeGuild = guilds.find(g => g.id === activeGuildId) || guilds[0];
-  const VECTOR_STORE_ID = activeGuild.id;
+  const activeGuild = guilds.find(g => g.id===activeId) || guilds[0];
 
-  const handleSelectGuild = (id) => { setActiveId(id); saveActiveId(id); };
-  const handleCreateGuild = (guild) => {
-    const updated = [...guilds, guild];
+  const selectGuild = (id) => { setActiveId(id); saveActiveId(id); };
+  const createGuild = (g) => {
+    const updated = [...guilds, g];
     setGuilds(updated); saveGuilds(updated);
-    handleSelectGuild(guild.id);
+    selectGuild(g.id);
   };
-  const handleDeleteGuild = (id) => {
-    const updated = guilds.filter(g => g.id !== id);
+  const deleteGuild = (id) => {
+    const updated = guilds.filter(g => g.id!==id);
     setGuilds(updated); saveGuilds(updated);
-    if (activeGuildId === id) handleSelectGuild(updated[0].id);
+    if (activeId===id) selectGuild(updated[0].id);
+  };
+  const renameGuild = (id, name) => {
+    const updated = guilds.map(g => g.id===id ? { ...g, name } : g);
+    setGuilds(updated); saveGuilds(updated);
   };
 
   return (
     <>
       <GlobalStyles />
+      <div style={{ height:"100vh", display:"flex", background:"var(--bg-base)", overflow:"hidden" }}>
 
-      {/* ── FULL-PAGE BACKGROUND ── */}
-      <div style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 0,
-        backgroundImage: `url(${MUJ_BG})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center center",
-        backgroundRepeat: "no-repeat",
-        backgroundAttachment: "fixed",
-      }} />
-      {/* Dark overlay over entire page */}
-      <div style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1,
-        background: "rgba(14, 4, 0, 0.72)",
-      }} />
-
-      {/* ── APP SHELL (above background) ── */}
-      <div style={{ height:"100vh", display:"flex", flexDirection:"column", position:"relative", zIndex:2 }}>
-
-        {/* NAV */}
-        <nav style={{ height:64, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 32px", background:"rgba(10,3,0,0.55)", borderBottom:"1px solid rgba(255,255,255,0.08)", backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)", position:"relative", zIndex:100 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <div style={{ width:38, height:38, borderRadius:12, background:"rgba(255,255,255,0.1)", border:"1px solid rgba(255,255,255,0.15)", display:"flex", alignItems:"center", justifyContent:"center", backdropFilter:"blur(8px)", overflow:"hidden", flexShrink:0 }}>
-              <img src={MUJ_LOGO} alt="MUJ" style={{ width:30, height:30, objectFit:"contain" }} onError={e => { e.target.style.display="none"; }} />
-            </div>
-            <div>
-              <div style={{ fontFamily:"'Playfair Display', serif", fontSize:16, fontWeight:700, color:"#fff", letterSpacing:"-0.02em", lineHeight:1.2 }}>Manipal University Jaipur</div>
-              <div style={{ fontSize:10.5, color:"rgba(255,255,255,0.4)", fontWeight:500, letterSpacing:"0.04em", textTransform:"uppercase" }}>AI Knowledge Portal</div>
+        {/* ── SIDEBAR ── */}
+        <div style={{ width:"var(--sidebar-w)", flexShrink:0, display:"flex", flexDirection:"column", background:"var(--bg-surface)", borderRight:"1px solid var(--border)", overflow:"hidden" }}>
+          {/* Logo */}
+          <div style={{ padding:"18px 16px 14px", borderBottom:"1px solid var(--border)" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <div style={{ width:32, height:32, borderRadius:"var(--radius-sm)", background:"rgba(99,102,241,0.2)", display:"flex", alignItems:"center", justifyContent:"center", color:"#818cf8" }}>
+                <Icon.Database />
+              </div>
+              <div>
+                <div style={{ fontSize:13.5, fontWeight:700, color:"var(--text-primary)", fontFamily:"'IBM Plex Mono', monospace", letterSpacing:"-0.02em" }}>NexusBot</div>
+                <div style={{ fontSize:10.5, color:"var(--text-muted)", fontWeight:500 }}>Admin Panel</div>
+              </div>
             </div>
           </div>
 
-          <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-            {[["home","Home"],["suburls","Sub URLs"],["upload","Knowledge Base"]].map(([id, label]) => (
-              <button key={id} className={`nav-link${tab===id?" active":""}`} onClick={() => setTab(id)}>{label}</button>
+          {/* Guild selector */}
+          <div style={{ padding:"12px 10px 8px" }}>
+            <div style={{ fontSize:10.5, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"var(--text-muted)", padding:"0 6px", marginBottom:6 }}>Knowledge Base</div>
+            <div style={{ background:"var(--bg-elevated)", border:"1px solid var(--border)", borderRadius:"var(--radius-md)", padding:"8px 10px", cursor:"pointer" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                <div style={{ width:8, height:8, borderRadius:"50%", background:activeGuild.color||"var(--accent)", flexShrink:0 }} />
+                <span style={{ fontSize:12.5, fontWeight:600, color:"var(--text-primary)", fontFamily:"'IBM Plex Mono', monospace", flex:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{activeGuild.name}</span>
+                <span style={{ color:"var(--text-muted)", flexShrink:0 }}><Icon.ChevronDown /></span>
+              </div>
+              <div style={{ fontSize:10.5, color:"var(--text-muted)", marginTop:4, paddingLeft:16, fontFamily:"'IBM Plex Mono', monospace" }}>{activeGuild.id.slice(0,10)}…</div>
+            </div>
+
+            {/* Quick switch */}
+            {guilds.length > 1 && (
+              <div style={{ marginTop:6, display:"flex", flexDirection:"column", gap:2 }}>
+                {guilds.filter(g => g.id!==activeId).map(g => (
+                  <button key={g.id} onClick={() => selectGuild(g.id)}
+                    style={{ display:"flex", alignItems:"center", gap:8, padding:"6px 10px", borderRadius:"var(--radius-sm)", border:"none", background:"transparent", cursor:"pointer", transition:"background .12s", fontFamily:"'IBM Plex Sans', sans-serif", width:"100%" }}
+                    onMouseEnter={e => e.currentTarget.style.background="var(--bg-elevated)"}
+                    onMouseLeave={e => e.currentTarget.style.background="transparent"}>
+                    <div style={{ width:6, height:6, borderRadius:"50%", background:g.color||"#4b5563", flexShrink:0 }} />
+                    <span style={{ fontSize:12, color:"var(--text-muted)", flex:1, textAlign:"left", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{g.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="divider" style={{ margin:"4px 0" }} />
+
+          {/* Nav */}
+          <nav style={{ padding:"4px 10px", flex:1 }}>
+            <div style={{ fontSize:10.5, fontWeight:700, letterSpacing:".07em", textTransform:"uppercase", color:"var(--text-muted)", padding:"0 6px", marginBottom:6 }}>Navigation</div>
+            {TABS.map(t => (
+              <button key={t.id} className={`nav-item${tab===t.id?" active":""}`} onClick={() => setTab(t.id)}>
+                <div className="nav-icon">{t.icon}</div>
+                {t.label}
+              </button>
             ))}
-          </div>
+          </nav>
 
-          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <button onClick={() => setGuildModal(true)}
-              style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 14px", borderRadius:100, background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.12)", fontSize:12.5, color:"rgba(255,255,255,0.7)", cursor:"pointer", transition:"all .15s", fontFamily:"'DM Sans', sans-serif", backdropFilter:"blur(8px)" }}>
-              <div style={{ width:7, height:7, borderRadius:"50%", background:"#16a34a", boxShadow:"0 0 8px #4ade80" }} />
-              <span style={{ fontWeight:500, color:"#fff", maxWidth:80, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{activeGuild.name}</span>
-              <code style={{ fontFamily:"'DM Mono', monospace", fontSize:10, color:"rgba(255,255,255,0.35)" }}>{VECTOR_STORE_ID.slice(0,6)}…</code>
-              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+          {/* Bottom: chat toggle */}
+          <div style={{ padding:"12px 10px", borderTop:"1px solid var(--border)" }}>
+            <button className="nav-item" onClick={() => setChatOpen(o => !o)}
+              style={{ background: chatOpen ? "rgba(99,102,241,0.15)" : undefined, color: chatOpen ? "#818cf8" : undefined, width:"100%" }}>
+              <div className="nav-icon" style={{ background: chatOpen ? "rgba(99,102,241,0.2)" : undefined }}>
+                <Icon.Chat />
+              </div>
+              Test Chat
+              <span className="status-dot status-online" style={{ marginLeft:"auto" }} />
             </button>
+            <div style={{ display:"flex", alignItems:"center", gap:6, padding:"8px 10px 4px" }}>
+              <span className="status-dot status-online" />
+              <span style={{ fontSize:11, color:"var(--text-muted)" }}>API connected</span>
+              <span className="code-block" style={{ marginLeft:"auto", fontSize:10 }}>v2.0</span>
+            </div>
           </div>
-        </nav>
-
-        {/* BODY */}
-        <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}>
-          {tab === "home" && <HomePage onChat={() => setChatOpen(true)} />}
-          {tab === "suburls" && <SubUrlsTab key={VECTOR_STORE_ID} guildId={VECTOR_STORE_ID} />}
-          {tab === "upload" && <UploadTab key={VECTOR_STORE_ID} guildId={VECTOR_STORE_ID} />}
         </div>
 
-        {showGuildModal && (
-          <GuildModal
-            guilds={guilds} activeId={activeGuildId}
-            onSelect={handleSelectGuild}
-            onCreate={handleCreateGuild}
-            onDelete={handleDeleteGuild}
-            onClose={() => setGuildModal(false)}
-          />
-        )}
+        {/* ── MAIN CONTENT ── */}
+        <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", position:"relative" }}>
+          {/* Top bar */}
+          <div style={{ height:52, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 28px", background:"var(--bg-surface)", borderBottom:"1px solid var(--border)" }}>
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <span style={{ color:"var(--text-muted)", fontSize:12 }}>{TABS.find(t=>t.id===tab)?.label}</span>
+              <span style={{ color:"var(--border)" }}>›</span>
+              <span className="code-block" style={{ fontSize:11 }}>{activeGuild.id.slice(0,8)}…</span>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <button className="btn btn-ghost" style={{ padding:"6px 14px", fontSize:12 }} onClick={() => setTab("settings")}>
+                <Icon.Plus /> New Guild
+              </button>
+              <button className="btn btn-primary" style={{ padding:"7px 16px", fontSize:12 }} onClick={() => setChatOpen(o=>!o)}>
+                <Icon.Chat /> {chatOpen ? "Close Chat" : "Test Chat"}
+              </button>
+            </div>
+          </div>
+
+          {/* Page */}
+          <div style={{ flex:1, overflow:"hidden", display:"flex", flexDirection:"column" }}>
+            {tab==="overview"  && <OverviewTab guilds={guilds} activeGuild={activeGuild} />}
+            {tab==="upload"    && <UploadTab key={activeId} guildId={activeId} />}
+            {tab==="suburls"   && <SubUrlsTab key={activeId} guildId={activeId} />}
+            {tab==="settings"  && <SettingsTab guilds={guilds} activeId={activeId} onSelect={selectGuild} onCreate={createGuild} onDelete={deleteGuild} onRename={renameGuild} />}
+          </div>
+        </div>
+
+        {/* ── CHAT ── */}
+        <ChatPanel isOpen={chatOpen} guildId={activeId} guildName={activeGuild.name} />
 
         {/* FAB */}
-        <button className="fab-ring" onClick={() => setChatOpen(o => !o)}
-          style={{ position:"fixed", bottom:32, right:32, zIndex:300, width:58, height:58, borderRadius:"50%", background:"linear-gradient(145deg, #D05A22, #B84A1A)", border:"none", cursor:"pointer", boxShadow:"0 8px 32px rgba(184,74,26,0.5), 0 2px 8px rgba(0,0,0,0.3)", display:"flex", alignItems:"center", justifyContent:"center", transition:"transform .2s, box-shadow .2s" }}
-          onMouseEnter={e => { e.currentTarget.style.transform="scale(1.08)"; }}
-          onMouseLeave={e => { e.currentTarget.style.transform="scale(1)"; }}
-          aria-label={chatOpen ? "Close chat" : "Open chat"}>
-          <div style={{ position:"absolute", top:-4, right:-4, width:20, height:20, borderRadius:"50%", background:"#fff", border:"2px solid var(--rust)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:8.5, fontWeight:700, color:"var(--rust)", fontFamily:"'DM Mono', monospace" }}>AI</div>
-          {chatOpen ? (
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          ) : (
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          )}
+        <button onClick={() => setChatOpen(o=>!o)}
+          style={{ position:"fixed", bottom:24, right:24, zIndex:400, width:50, height:50, borderRadius:"50%", background: chatOpen ? "var(--bg-elevated)" : "var(--accent)", border:`1.5px solid ${chatOpen?"var(--border-active)":"transparent"}`, cursor:"pointer", boxShadow:`0 8px 24px ${chatOpen?"rgba(0,0,0,0.3)":"var(--accent-glow)"}`, display:"flex", alignItems:"center", justifyContent:"center", color:"#fff", transition:"all .2s" }}
+          onMouseEnter={e => e.currentTarget.style.transform="scale(1.06)"}
+          onMouseLeave={e => e.currentTarget.style.transform="scale(1)"}>
+          {chatOpen ? <Icon.X /> : <Icon.Chat />}
         </button>
-
-        <FloatingChatPanel isOpen={chatOpen} guildId={VECTOR_STORE_ID} />
       </div>
     </>
   );
