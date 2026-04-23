@@ -8,8 +8,6 @@ from bs4 import SoupStrainer
 import PyPDF2
 import pdfplumber
 from io import BytesIO
-
-# ✅ Single global embeddings instance
 embeddings = HuggingFaceEmbeddings(
     model_name="sentence-transformers/all-MiniLM-L6-v2"
 )
@@ -50,8 +48,6 @@ def webscraper(url):
 
 def read_pdf(file):
     text = ""
-
-    # ✅ Always reset BytesIO position
     if isinstance(file, BytesIO):
         file.seek(0)
     elif isinstance(file, str):
@@ -68,7 +64,6 @@ def read_pdf(file):
                 page_text = page.extract_text()
                 if page_text:
                     text += page_text.lower() + "\n"
-                # ✅ Extract tables too
                 tables = page.extract_tables()
                 for table in tables:
                     for row in table:
@@ -116,13 +111,12 @@ def split_texts(texts):
     )
     chunks = []
     for text in texts:
-        # ✅ THE BUG FIX — handle all possible types
         if isinstance(text, tuple):
-            text = text[0]      # extract string from tuple
+            text = text[0]
         if isinstance(text, list):
             text = " ".join(str(t) for t in text)
         if not isinstance(text, str):
-            text = str(text)    # force to string
+            text = str(text)
         text = text.strip()
         if text:
             chunks.extend(splitter.split_text(text))
@@ -132,12 +126,9 @@ def create_vectorstore(texts, server_id):
     server_id_str = str(server_id)
     DB_DIR = f"vectorstore/{server_id_str}/faiss_index"
     os.makedirs(DB_DIR, exist_ok=True)
-
-    # ✅ Deduplicate and validate all chunks
     seen = set()
     unique_texts = []
     for t in texts:
-        # ✅ Handle tuples here too just in case
         if isinstance(t, tuple):
             t = t[0]
         if not isinstance(t, str):
@@ -146,16 +137,15 @@ def create_vectorstore(texts, server_id):
         if cleaned and cleaned not in seen and len(cleaned) > 30:
             seen.add(cleaned)
             unique_texts.append(cleaned)
-
-    print(f"✅ Deduplicated: {len(texts)} → {len(unique_texts)} chunks")
+    print(f"Deduplicated: {len(texts)} → {len(unique_texts)} chunks")
 
     if not unique_texts:
-        print("❌ No valid texts to store")
+        print("No valid texts to store")
         return False
 
     try:
         if os.path.exists(os.path.join(DB_DIR, "index.faiss")):
-            print(f"📂 Appending to existing vectorstore for {server_id_str}")
+            print(f"Appending to existing vectorstore for {server_id_str}")
             vectorstore = FAISS.load_local(
                 DB_DIR,
                 embeddings,
@@ -163,16 +153,16 @@ def create_vectorstore(texts, server_id):
             )
             vectorstore.add_texts(unique_texts)
         else:
-            print(f"🆕 Creating new vectorstore for {server_id_str}")
+            print(f"Creating new vectorstore for {server_id_str}")
             vectorstore = FAISS.from_texts(unique_texts, embeddings)
 
         vectorstore.save_local(DB_DIR)
-        print(f"✅ Vectorstore saved to {DB_DIR}")
+        print(f"Vectorstore saved to {DB_DIR}")
         return True
 
     except Exception as e:
         import traceback
-        print(f"❌ Vectorstore error: {e}")
+        print(f"Vectorstore error: {e}")
         print(traceback.format_exc())
         return False
 

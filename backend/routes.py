@@ -23,10 +23,6 @@ url_pattern = r"(https?://[^\s]+)"
 
 @app.get("/sub-urls")
 async def sub_urls_api(url: str):
-    """
-    Scrape and return all unique sub-URLs found on the given page.
-    Query param: ?url=https://example.com
-    """
     url = url.strip()
     if not url:
         raise HTTPException(status_code=400, detail="'url' query parameter is required.")
@@ -52,7 +48,6 @@ async def query_api(request: Request):
 
     question = (data.get("question") or "").strip()
     server = (data.get("server") or "").strip()
-
     if not question:
         raise HTTPException(status_code=400, detail="'question' is required.")
     if not server:
@@ -77,12 +72,9 @@ async def upload_api(
 
     pdf_files = [f for f in (files or []) if f.filename]
     links = re.findall(url_pattern, urls) if urls else []
-
     if not pdf_files and not links:
         raise HTTPException(status_code=400, detail="No PDFs or URLs provided.")
-
     texts = []
-
     for link in links:
         try:
             scraped_text = webscraper(link)
@@ -105,7 +97,6 @@ async def upload_api(
 
     if not texts:
         raise HTTPException(status_code=400, detail="No valid content extracted.")
-
     try:
         chunked_text = split_texts(texts)
     except Exception as e:
@@ -118,7 +109,6 @@ async def upload_api(
 
     if not created_vector:
         raise HTTPException(status_code=500, detail="Vector store creation returned falsy.")
-
     return {
         "status": "success",
         "message": f"Processed {len(chunked_text)} chunks",
@@ -131,21 +121,6 @@ async def upload_contacts_api(
     guild_id: str = Form(...),
     file: UploadFile = File(...),
 ):
-    """
-    Upload an xlsx faculty/contacts file and ingest every row as a
-    text chunk into the guild's FAISS vector store.
-
-    Each row becomes one self-contained chunk:
-        Name: ...
-        Designation: ...
-        Mobile: ...
-        Email: ...
-        Cabin: ...
-        Extension: ...
-
-    The LLM answers contact questions through normal RAG retrieval —
-    no separate lookup code path needed.
-    """
     guild_id = guild_id.strip()
     if not guild_id:
         raise HTTPException(status_code=400, detail="'guild_id' is required.")

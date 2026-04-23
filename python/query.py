@@ -5,6 +5,7 @@ load_dotenv(override=True)
 
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
+from langchain_community.retrievers import BM25Retriever
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
@@ -107,7 +108,7 @@ QUESTION:
 ANSWER:
 """)
 _vectorstore_cache: dict = {}
-
+_docs_cache: dict = {} 
 def get_db_dir(server_id):
     return f"vectorstore/{str(server_id)}/faiss_index"
 
@@ -122,6 +123,7 @@ def get_vectorstore(server_id):
 
 def invalidate_cache(server_id):
     _vectorstore_cache.pop(str(server_id), None)
+    _docs_cache.pop(str(server_id), None)
 
 def load_vectorstore(server_id):
     DB_DIR = get_db_dir(server_id)
@@ -133,7 +135,42 @@ def load_vectorstore(server_id):
         embeddings,
         allow_dangerous_deserialization=True
     )
+def get_all_docs(server_id):
+    server_id_str=str(server_id)
+    if(server_id_str not in _docs_cache):
+        vs=get_vectorstore(server_id)
+        if vs is None:
+            return []
+        docs=list(vs.docstore._dict.values())
+        _docs_cache[server_id_str]=docs
+    return _docs_cache[server_id_str]
+def get_hybrid_retriever(server_id):
+    vectorstore = get_vectorstore(server_id)
+    if vectorstore is None:
+        return None
+    all_docs = get_all_docs(server_id)
+    if not all_docs:
+        return None
 
+    bm25_retriever = BM25Retriever.from_documents(all_docs, k=10)
+    faiss_retriever = vectorstore.as_retriever(
+        search_type="mmr",
+        search_kwargs={"k": 15, "fetch_k": 45, "lambda_mult": 0.4}
+    )
+
+    # Manual ensemble — no import needed
+    def hybrid_retrieve(query):
+        bm25_docs = bm25_retriever.invoke(query)
+        faiss_docs = faiss_retriever.invoke(query)
+        seen = set()
+        merged = []
+        for doc in bm25_docs + faiss_docs:
+            key = doc.page_content[:100]
+            if key not in seen:
+                seen.add(key)
+                merged.append(doc)
+        return merged
+    return hybrid_retrieve
 def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
@@ -173,26 +210,16 @@ def expand_query(question: str) -> str:
     return q
 
 def answer_query(question: str, server_id: int):
-
     question = expand_query(question.lower())
 
     vectorstore = get_vectorstore(server_id)
     if vectorstore is None:
-        return "⚠️ No content has been uploaded yet. Use `-upload` with URLs or PDF attachments first."
+        return "No content has been uploaded yet. Use -upload with URLs or PDF attachments first."
 
-    retriever = vectorstore.as_retriever(
-        search_type="mmr",
-        search_kwargs={
-            "k": 15,
-            "fetch_k": 45,
-            "lambda_mult": 0.4
-        }
-    )
-
-    qa_chain = (
-        {"context": retriever | format_docs, "question": RunnablePassthrough()}
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
-    return qa_chain.invoke(question)
+    retriever = get_hybrid_retriever(server_id)
+    if retriever is None:
+        return "No content has been uploaded yet. Use -upload with URLs or PDF attachments first."
+    docs = retriever(question)
+    context = format_docs(docs)
+    chain = prompt | llm | StrOutputParser()
+    return chain.invoke({"context": context, "question": question})
