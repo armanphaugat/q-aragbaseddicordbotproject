@@ -71,6 +71,12 @@ async def upload_api(
         raise HTTPException(status_code=400, detail="'guild_id' cannot be empty.")
 
     pdf_files = [f for f in (files or []) if f.filename]
+    for f in pdf_files:
+        f.file.seek(0, 2)
+        size = f.file.tell()
+        f.file.seek(0)  
+        if(size>10*1024*1024):
+            raise HTTPException(status_code=400, detail="Please Upload File less Than 10MB")
     links = re.findall(url_pattern, urls) if urls else []
     if not pdf_files and not links:
         raise HTTPException(status_code=400, detail="No PDFs or URLs provided.")
